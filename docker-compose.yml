@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  # 1. Archiver Application (البرنامج الرئيسي للأرشيف الذكي)
+  archiver-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: archiver_intelligent_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # حفظ قاعدة البيانات والملفات المؤرشفة محلياً على القرص الصلب في مجلد archiver-data
+      - ./archiver-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # يمكنك إضافة مفتاح Gemini هنا إن رغبت بتفعيل الذكاء السحابي، أو تركه فارغاً للعمل 100% محلياً (أوفلاين)
+      - GEMINI_API_KEY=your_gemini_api_key_here
+    depends_on:
+      - ollama
+
+  # 2. Ollama Local AI Server (خادم الذكاء الاصطناعي المحلي بالكامل 100% دون إنترنت)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: archiver_ollama_server
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      # حفظ النماذج والذكاء الاصطناعي محلياً لمنع إعادة تحميلها عند إعادة تشغيل الكانتينر
+      - ollama-models:/root/.ollama
+
+volumes:
+  ollama-models:
+    driver: local

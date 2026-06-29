@@ -1,0 +1,6 @@
+{
+  "name": "مستخلص بيانات الكتب",
+  "description": "تطبيق لاستخلاص رقم وتاريخ وجهة إصدار الكتب والوثائق الرسمية من الصور وتصديرها إلى ملف إكسل",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

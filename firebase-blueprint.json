@@ -1,0 +1,107 @@
+{
+  "entities": {
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Log of user actions for tracking changes to the archive",
+      "type": "object",
+      "properties": {
+        "action": { "type": "string" },
+        "documentId": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "documentSubject": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "timestamp": { "type": "integer" }
+      },
+      "required": ["action", "userId", "timestamp"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile with roles and demographic data",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "fullName": { "type": "string" },
+        "statisticalNumber": { "type": "string" },
+        "classification": { "type": "string" },
+        "rank": { "type": "string" },
+        "grade": { "type": "string" },
+        "dob": { "type": "string" },
+        "motherName": { "type": "string" },
+        "province": { "type": "string" },
+        "workspace": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "integer" }
+      },
+      "required": ["email", "fullName", "role"]
+    },
+    "DocumentRecord": {
+      "title": "DocumentRecord",
+      "description": "Represents a scanned and archived document with extracted metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileSize": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "base64Data": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "status": { "type": "string" },
+        "error": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "documentDate": { "type": "string" },
+        "issuingAuthority": { "type": "string" },
+        "documentSubject": { "type": "string" },
+        "confidenceScore": { "type": "integer" },
+        "extractedText": { "type": "string" },
+        "documentType": { "type": "string" },
+        "penaltyType": { "type": "string" },
+        "legalArticle": { "type": "string" },
+        "penaltyReason": { "type": "string" },
+        "penaltyDuration": { "type": "string" },
+        "hrLetterNumber": { "type": "string" },
+        "hrLetterDate": { "type": "string" },
+        "securityLetterNumber": { "type": "string" },
+        "securityLetterDate": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "employeeNames": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "lastModifiedBy": { "type": "string" },
+        "lastModifiedByName": { "type": "string" }
+      },
+      "required": ["id", "fileName", "fileSize", "imageUrl", "base64Data", "mimeType", "status"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Represents a custom folder or category for organizing archived documents",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "label": { "type": "string" },
+        "color": { "type": "string" },
+        "isCustom": { "type": "boolean" },
+        "createdAt": { "type": "integer" }
+      },
+      "required": ["type", "label"]
+    }
+  },
+  "firestore": {
+    "auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Log of actions taken by users"
+    },
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "documents/{documentId}": {
+      "schema": "DocumentRecord",
+      "description": "Scanned documents archive"
+    },
+    "categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Document classification folders and tabs"
+    }
+  }
+}
