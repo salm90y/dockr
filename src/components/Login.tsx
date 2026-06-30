@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { LogIn, User, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
-import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 interface LoginProps {
-  onLoginSuccess?: () => void;
+  onLoginSuccess?: (localUser?: any, localProfile?: any) => void;
 }
 
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
@@ -23,8 +23,49 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     setError('');
     
     try {
+      // 1. First, attempt secure local offline database authentication (Docker Server)
+      try {
+        const localResponse = await fetch('/api/local/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            username: email,
+            password: password
+          })
+        });
+
+        if (localResponse.ok) {
+          const resData = await localResponse.json();
+          if (resData.success) {
+            // Save local user session details to localStorage for persistence
+            if (rememberMe) {
+              localStorage.setItem('archiver_local_user', JSON.stringify(resData.user));
+              localStorage.setItem('archiver_local_profile', JSON.stringify(resData.profile));
+              // Also toggle offline mode true automatically since we are self-hosting on Docker
+              localStorage.setItem('archiver_is_offline', 'true');
+            }
+            if (onLoginSuccess) {
+              onLoginSuccess(resData.user, resData.profile);
+            }
+            setLoading(false);
+            return;
+          }
+        } else {
+          const errData = await localResponse.json();
+          if (errData && errData.error) {
+            setError(errData.error);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (localErr) {
+        console.warn('Local offline authentication server unavailable, falling back to Firebase Auth:', localErr);
+      }
+
+      // 2. Fallback to Firebase authentication if local server is not accessible or not running
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
-      
       const loginEmail = email.includes('@') ? email : `${email}@archive.system.local`;
       
       try {
@@ -33,7 +74,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           onLoginSuccess();
         }
       } catch (authErr: any) {
-        // Auto-create default admin if it doesn't exist
+        // Auto-create default admin in Firebase if it doesn't exist (Only if Firebase is online)
         if ((authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential') && email === 'ahmed' && password === '1986@1986') {
           const userCred = await createUserWithEmailAndPassword(auth, loginEmail, password);
           await setDoc(doc(db, 'users', userCred.user.uid), {
@@ -52,53 +93,9 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     } catch (err: any) {
       console.error('Login error:', err);
       if (err.code === 'auth/operation-not-allowed') {
-        setError('يجب تفعيل خيار تسجيل الدخول (Email/Password) من لوحة تحكم Firebase (Authentication > Sign-in method).');
+        setError('يجب تفعيل خيار تسجيل الدخول (Email/Password) من لوحة تحكم Firebase.');
       } else {
         setError('فشل تسجيل الدخول. يرجى التحقق من اسم المستخدم وكلمة المرور.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    setError('');
-    setLoading(true);
-    try {
-      const provider = new GoogleAuthProvider();
-      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
-      const result = await signInWithPopup(auth, provider);
-      
-      const userDocRef = doc(db, 'users', result.user.uid);
-      const userDoc = await getDoc(userDocRef);
-      
-      const isAdmin = result.user.email === 'ahmed1986y5@gmail.com';
-      
-      if (!userDoc.exists()) {
-        await setDoc(userDocRef, {
-          email: result.user.email,
-          fullName: result.user.displayName || 'مستخدم جديد',
-          role: isAdmin ? 'admin' : 'employee',
-          createdAt: Date.now()
-        });
-      } else if (isAdmin && userDoc.data().role !== 'admin') {
-        // Force update role if it's the admin email but role is missing or not admin
-        await updateDoc(userDocRef, {
-          role: 'admin'
-        });
-      }
-      
-      if (onLoginSuccess) {
-        onLoginSuccess();
-      }
-    } catch (err: any) {
-      console.error('Google login error:', err);
-      if (err.code === 'auth/operation-not-allowed') {
-        setError('يجب تفعيل خيار تسجيل الدخول (Google) من لوحة تحكم Firebase (Authentication > Sign-in method).');
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        setError('تم إغلاق نافذة تسجيل الدخول.');
-      } else {
-        setError('فشل تسجيل الدخول بواسطة Google. تأكد من تفعيل الصلاحيات.');
       }
     } finally {
       setLoading(false);
@@ -117,7 +114,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             <LogIn className="w-8 h-8 text-cyan-400" />
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight">نظام الأرشفة الذكي</h1>
-          <p className="text-sm text-gray-500 mt-2 text-center">قم بتسجيل الدخول للوصول إلى لوحة التحكم والأرشيف</p>
+          <p className="text-sm text-gray-500 mt-2 text-center">بوابة تسجيل الدخول الآمنة للشبكة المحلية والمخدم السحابي</p>
         </div>
         
         <form onSubmit={handleLogin} className="p-8 space-y-6">
@@ -143,8 +140,8 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-[#111] border border-[#222] text-white rounded-lg px-4 py-3 pr-10 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-colors"
-                placeholder="ادخل اسم المستخدم أو رقم الهاتف"
+                className="w-full bg-[#111] border border-[#222] text-white rounded-lg px-4 py-3 pr-10 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-colors text-center"
+                placeholder="07703120523"
                 dir="ltr"
               />
             </div>
@@ -161,7 +158,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-[#111] border border-[#222] text-white rounded-lg px-4 py-3 pr-10 pl-10 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-colors"
+                className="w-full bg-[#111] border border-[#222] text-white rounded-lg px-4 py-3 pr-10 pl-10 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-colors text-center"
                 placeholder="••••••••"
                 dir="ltr"
               />
@@ -183,50 +180,24 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 onChange={(e) => setRememberMe(e.target.checked)}
                 className="rounded border-[#333] bg-[#111] text-cyan-500 focus:ring-cyan-500 focus:ring-offset-[#111]"
               />
-              <span>تذكرني</span>
+              <span>تذكرني على هذا الجهاز</span>
             </label>
           </div>
           
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {loading ? (
               <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
             ) : (
               <>
                 <LogIn className="w-5 h-5" />
-                <span>تسجيل الدخول</span>
+                <span>تسجيل الدخول الآمن</span>
               </>
             )}
           </button>
-
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-[#333]"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-[#0a0a0a] text-gray-500">أو</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={loading}
-              className="mt-4 w-full bg-white text-black font-bold py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 24c2.97 0 5.46-1 7.28-2.69l-3.57-2.77c-.99.69-2.26 1.1-3.71 1.1-2.87 0-5.3-1.94-6.16-4.53H2.18v2.84C3.99 21.53 7.7 24 12 24z" />
-                <path fill="#FBBC05" d="M5.84 15.11c-.22-.69-.35-1.43-.35-2.11s.13-1.42.35-2.11V8.05H2.18C1.43 9.55 1 11.22 1 13s.43 3.45 1.18 4.95l3.66-2.84z" />
-                <path fill="#EA4335" d="M12 4.69c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.22 14.97 0 12 0 7.7 0 3.99 2.47 2.18 5.84l3.66 2.84c.86-2.59 3.29-4.53 6.16-4.53z" />
-              </svg>
-              تسجيل الدخول باستخدام Google
-            </button>
-          </div>
         </form>
       </motion.div>
     </div>

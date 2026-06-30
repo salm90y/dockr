@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 import fs from "fs";
+import crypto from "crypto";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 
@@ -839,6 +840,230 @@ app.post("/api/local/upload", (req, res) => {
   } catch (err: any) {
     console.error("Local upload failed:", err);
     res.status(500).json({ error: "Failed to write file locally: " + err.message });
+  }
+});
+
+// --- SECURE OFFLINE USER DATABASE (DOCKER / LOCAL-ONLY) ---
+const USERS_FILE = path.join(DATA_DIR, "users.json");
+
+interface LocalUserRecord {
+  uid: string;
+  username: string;
+  email: string;
+  fullName: string;
+  statisticalNumber?: string;
+  classification?: string;
+  rank?: string;
+  grade?: string;
+  dobDay?: string;
+  dobMonth?: string;
+  dobYear?: string;
+  motherName?: string;
+  province?: string;
+  workspace?: string;
+  role: 'admin' | 'employee' | 'data_entry';
+  salt: string;
+  hash: string;
+  createdAt: number;
+}
+
+// PBKDF2 key derivation for highly secure password hashing on local disk
+const hashPasswordLocal = (password: string) => {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
+  return { salt, hash };
+};
+
+const verifyPasswordLocal = (password: string, salt: string, hash: string) => {
+  const verifyHash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
+  return verifyHash === hash;
+};
+
+// Initialize default users if not present
+const initLocalUsers = () => {
+  try {
+    if (!fs.existsSync(USERS_FILE)) {
+      const defaultUsers: LocalUserRecord[] = [];
+      
+      // Seed default admin accounts (07703120523 & ahmed with password 1986@1986)
+      const creds1 = hashPasswordLocal("1986@1986");
+      defaultUsers.push({
+        uid: "local-admin-07703120523",
+        username: "07703120523",
+        email: "07703120523@archive.system.local",
+        fullName: "المدير العام (أدمن)",
+        role: "admin",
+        salt: creds1.salt,
+        hash: creds1.hash,
+        createdAt: Date.now()
+      });
+
+      const creds2 = hashPasswordLocal("1986@1986");
+      defaultUsers.push({
+        uid: "local-admin-ahmed",
+        username: "ahmed",
+        email: "ahmed1986y5@gmail.com",
+        fullName: "المدير العام (أحمد)",
+        role: "admin",
+        salt: creds2.salt,
+        hash: creds2.hash,
+        createdAt: Date.now()
+      });
+
+      fs.writeFileSync(USERS_FILE, JSON.stringify(defaultUsers, null, 2), "utf8");
+      console.log("Initialized secure local users on disk with 1986@1986 password");
+    }
+  } catch (err) {
+    console.error("Failed to initialize local users database:", err);
+  }
+};
+
+initLocalUsers();
+
+// Secure Local Login Endpoint
+app.post("/api/local/login", (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: "اسم المستخدم وكلمة المرور مطلوبة." });
+    }
+
+    const users: LocalUserRecord[] = readJsonFile(USERS_FILE, []);
+    const cleanInput = username.trim().toLowerCase();
+
+    // Check by username or email
+    const user = users.find(u => 
+      u.username.toLowerCase() === cleanInput || 
+      u.email.toLowerCase() === cleanInput
+    );
+
+    if (!user) {
+      return res.status(401).json({ error: "اسم المستخدم أو كلمة المرور غير صحيحة." });
+    }
+
+    const isValid = verifyPasswordLocal(password, user.salt, user.hash);
+    if (!isValid) {
+      return res.status(401).json({ error: "اسم المستخدم أو كلمة المرور غير صحيحة." });
+    }
+
+    // Success: return a structured profile payload compatible with the client app
+    res.json({
+      success: true,
+      user: {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.fullName
+      },
+      profile: {
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        statisticalNumber: user.statisticalNumber || "",
+        classification: user.classification || "",
+        rank: user.rank || "",
+        grade: user.grade || "",
+        dobDay: user.dobDay || "",
+        dobMonth: user.dobMonth || "",
+        dobYear: user.dobYear || "",
+        motherName: user.motherName || "",
+        province: user.province || "",
+        workspace: user.workspace || "",
+        createdAt: user.createdAt
+      }
+    });
+  } catch (err: any) {
+    console.error("Local login failed:", err);
+    res.status(500).json({ error: "خطأ في الملقم المحلي: " + err.message });
+  }
+});
+
+// Get all local users
+app.get("/api/local/users", (req, res) => {
+  try {
+    const users: LocalUserRecord[] = readJsonFile(USERS_FILE, []);
+    // Sanitize to omit salt and hash before sending to client
+    const sanitized = users.map(u => ({
+      id: u.uid,
+      email: u.email,
+      fullName: u.fullName,
+      role: u.role,
+      statisticalNumber: u.statisticalNumber,
+      classification: u.classification,
+      rank: u.rank,
+      grade: u.grade,
+      dobDay: u.dobDay,
+      dobMonth: u.dobMonth,
+      dobYear: u.dobYear,
+      motherName: u.motherName,
+      province: u.province,
+      workspace: u.workspace,
+      createdAt: u.createdAt
+    }));
+    res.json(sanitized);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add new local user
+app.post("/api/local/users", (req, res) => {
+  try {
+    const userData = req.body;
+    if (!userData.email || !userData.password || !userData.fullName) {
+      return res.status(400).json({ error: "البريد الإلكتروني، كلمة المرور، والاسم الكامل حقول مطلوبة." });
+    }
+
+    const users: LocalUserRecord[] = readJsonFile(USERS_FILE, []);
+    const exists = users.some(u => u.email.toLowerCase() === userData.email.toLowerCase());
+    if (exists) {
+      return res.status(400).json({ error: "هذا المستخدم مسجل مسبقاً." });
+    }
+
+    // Hash password with high security
+    const { salt, hash } = hashPasswordLocal(userData.password);
+    
+    // Auto extract username from email or use directly
+    const username = userData.email.split("@")[0];
+
+    const newUser: LocalUserRecord = {
+      uid: `local-user-${Date.now()}`,
+      username: username,
+      email: userData.email,
+      fullName: userData.fullName,
+      role: userData.role || "employee",
+      statisticalNumber: userData.statisticalNumber,
+      classification: userData.classification,
+      rank: userData.rank,
+      grade: userData.grade,
+      dobDay: userData.dobDay,
+      dobMonth: userData.dobMonth,
+      dobYear: userData.dobYear,
+      motherName: userData.motherName,
+      province: userData.province,
+      workspace: userData.workspace,
+      salt: salt,
+      hash: hash,
+      createdAt: Date.now()
+    };
+
+    users.push(newUser);
+    writeJsonFile(USERS_FILE, users);
+    res.json({ success: true, user: { uid: newUser.uid, email: newUser.email, displayName: newUser.fullName } });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete local user
+app.delete("/api/local/users/:id", (req, res) => {
+  try {
+    const { id } = req.params;
+    const users: LocalUserRecord[] = readJsonFile(USERS_FILE, []);
+    const filtered = users.filter(u => u.uid !== id);
+    writeJsonFile(USERS_FILE, filtered);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

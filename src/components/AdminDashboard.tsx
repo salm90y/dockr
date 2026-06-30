@@ -6,7 +6,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { UserProfile, AuditLog } from '../types';
 
-export const AdminDashboard = () => {
+export const AdminDashboard = ({ isOfflineMode = false }: { isOfflineMode?: boolean }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [isAddingUser, setIsAddingUser] = useState(false);
@@ -31,27 +31,62 @@ export const AdminDashboard = () => {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
-      const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
-      setUsers(usersData);
-      setLoading(false);
-    }, (err) => {
-      console.error(err);
-      handleFirestoreError(err, OperationType.GET, 'users');
-    });
+    if (isOfflineMode) {
+      // 1. Offline Mode: Fetch local users from secure local Docker database
+      const fetchLocalUsers = async () => {
+        try {
+          const res = await fetch('/api/local/users');
+          if (res.ok) {
+            const data = await res.json();
+            setUsers(data);
+          }
+        } catch (err) {
+          console.error("Failed to fetch local users in offline mode:", err);
+        } finally {
+          setLoading(false);
+        }
+      };
 
-    const unsubLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc')), (snapshot) => {
-      const logsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AuditLog));
-      setLogs(logsData);
-    }, (err) => {
-      console.error(err);
-    });
+      fetchLocalUsers();
+      const interval = setInterval(fetchLocalUsers, 5000);
 
-    return () => {
-      unsubUsers();
-      unsubLogs();
-    };
-  }, []);
+      // Load offline audit logs from localStorage if stored
+      const savedLogs = localStorage.getItem('archiver_audit_logs');
+      if (savedLogs) {
+        try {
+          setLogs(JSON.parse(savedLogs));
+        } catch (e) {
+          console.error("Failed to parse local audit logs", e);
+        }
+      }
+
+      return () => {
+        clearInterval(interval);
+      };
+    } else {
+      // 2. Online Mode: Subscribe to Firebase Firestore collections
+      const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+        const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
+        setUsers(usersData);
+        setLoading(false);
+      }, (err) => {
+        console.error(err);
+        handleFirestoreError(err, OperationType.GET, 'users');
+      });
+
+      const unsubLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc')), (snapshot) => {
+        const logsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AuditLog));
+        setLogs(logsData);
+      }, (err) => {
+        console.error(err);
+      });
+
+      return () => {
+        unsubUsers();
+        unsubLogs();
+      };
+    }
+  }, [isOfflineMode]);
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,43 +96,82 @@ export const AdminDashboard = () => {
     try {
       const loginEmail = email.includes('@') ? email : `${email}@archive.system.local`;
 
-      // Note: This creates a user in the current auth context and signs them in.
-      // In a real production app, an admin should ideally use Firebase Admin SDK (server-side) to create users.
-      // For this frontend-only app, we will use the client SDK. This means the admin might be signed out and signed in as the new user.
-      // However, another approach is to have a secondary Firebase app instance just for creating users.
-      // But for simplicity, we will assume we can just create them. If it logs the admin out, they will have to log back in.
-      const userCredential = await createUserWithEmailAndPassword(auth, loginEmail, password);
-      const newUserId = userCredential.user.uid;
+      if (isOfflineMode) {
+        // Create user in secure offline local Docker database
+        const res = await fetch('/api/local/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email: loginEmail,
+            password,
+            fullName,
+            statisticalNumber,
+            classification,
+            rank,
+            grade,
+            dobDay,
+            dobMonth,
+            dobYear,
+            motherName,
+            province,
+            workspace,
+            role
+          })
+        });
 
-      const newUser: Partial<UserProfile> = {
-        email: loginEmail,
-        fullName,
-        statisticalNumber,
-        classification,
-        rank,
-        grade,
-        dobDay,
-        dobMonth,
-        dobYear,
-        motherName,
-        province,
-        workspace,
-        role,
-        createdAt: Date.now()
-      };
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || 'فشل في إضافة المستخدم محلياً');
+        }
 
-      await setDoc(doc(db, 'users', newUserId), newUser);
-      
-      setIsAddingUser(false);
-      // Reset form
-      setEmail(''); setPassword(''); setFullName(''); setStatisticalNumber('');
-      setClassification(''); setRank(''); setGrade(''); setDobDay(''); setDobMonth(''); setDobYear('');
-      setMotherName(''); setProvince(''); setWorkspace(''); setRole('data_entry');
-      
-      // Because we used createUserWithEmailAndPassword, the admin is now logged in as the new user!
-      // This is a known limitation of the client SDK. The user will be redirected to the main app as the new user, or we can prompt them.
-      // Let's just reload the page to force the new user state to take effect.
-      window.location.reload();
+        setIsAddingUser(false);
+        // Reset form
+        setEmail(''); setPassword(''); setFullName(''); setStatisticalNumber('');
+        setClassification(''); setRank(''); setGrade(''); setDobDay(''); setDobMonth(''); setDobYear('');
+        setMotherName(''); setProvince(''); setWorkspace(''); setRole('data_entry');
+
+        // Reload user list immediately
+        const listRes = await fetch('/api/local/users');
+        if (listRes.ok) {
+          const data = await listRes.json();
+          setUsers(data);
+        }
+      } else {
+        // Online: Create user in Firebase Authentication and Firestore
+        const userCredential = await createUserWithEmailAndPassword(auth, loginEmail, password);
+        const newUserId = userCredential.user.uid;
+
+        const newUser: Partial<UserProfile> = {
+          email: loginEmail,
+          fullName,
+          statisticalNumber,
+          classification,
+          rank,
+          grade,
+          dobDay,
+          dobMonth,
+          dobYear,
+          motherName,
+          province,
+          workspace,
+          role,
+          createdAt: Date.now()
+        };
+
+        await setDoc(doc(db, 'users', newUserId), newUser);
+        
+        setIsAddingUser(false);
+        // Reset form
+        setEmail(''); setPassword(''); setFullName(''); setStatisticalNumber('');
+        setClassification(''); setRank(''); setGrade(''); setDobDay(''); setDobMonth(''); setDobYear('');
+        setMotherName(''); setProvince(''); setWorkspace(''); setRole('data_entry');
+        
+        // Because we used createUserWithEmailAndPassword, the admin is now logged in as the new user!
+        // This is a known limitation of the client SDK. Let's reload to trigger correct auth.
+        window.location.reload();
+      }
 
     } catch (err: any) {
       console.error(err);

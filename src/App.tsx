@@ -160,6 +160,21 @@ export default function App() {
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   useEffect(() => {
+    // 1. Check if there is a secure local offline user session stored
+    const localUserStr = localStorage.getItem('archiver_local_user');
+    const localProfileStr = localStorage.getItem('archiver_local_profile');
+    if (localUserStr && localProfileStr) {
+      try {
+        setUser(JSON.parse(localUserStr));
+        setUserProfile(JSON.parse(localProfileStr));
+        setLoading(false);
+        return;
+      } catch (err) {
+        console.error("Failed to restore secure offline user session:", err);
+      }
+    }
+
+    // 2. Fallback to Firebase onAuthStateChanged if online
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
@@ -197,15 +212,33 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  const handleLogout = async () => {
+    try {
+      localStorage.removeItem('archiver_local_user');
+      localStorage.removeItem('archiver_local_profile');
+      setUser(null);
+      setUserProfile(null);
+      await signOut(auth);
+    } catch (e) {
+      console.error("Error during sign out:", e);
+    }
+  };
+
   if (loading) {
     return <div className="min-h-screen bg-[#090b0f] flex items-center justify-center"><Loader2 className="w-8 h-8 text-cyan-500 animate-spin" /></div>;
   }
 
   if (!user) {
-    return <Login />;
+    return <Login onLoginSuccess={(localUser, localProfile) => {
+      if (localUser && localProfile) {
+        setUser(localUser);
+        setUserProfile(localProfile);
+      }
+    }} />;
   }
 
   if (showAdminDashboard && isAdminUser) {
+    const isOffline = localStorage.getItem('archiver_is_offline') === 'true';
     return (
       <div dir="rtl" className="min-h-screen bg-[#050505] text-[#e5e5e5] font-sans antialiased pb-12">
         <header className="bg-gradient-to-b from-[#0a0a0a] to-[#040404] border-b border-[#1c1c1c] sticky top-0 z-40 shadow-xl px-4 py-3 flex justify-between items-center">
@@ -214,18 +247,18 @@ export default function App() {
           </div>
           <button
             onClick={() => setShowAdminDashboard(false)}
-            className="flex items-center gap-2 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] text-white text-xs font-bold px-4 py-2 rounded-sm transition-all"
+            className="flex items-center gap-2 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] text-white text-xs font-bold px-4 py-2 rounded-sm transition-all cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
             العودة للتطبيق
           </button>
         </header>
-        <AdminDashboard />
+        <AdminDashboard isOfflineMode={isOffline} />
       </div>
     );
   }
 
-  return <MainApp user={user} userProfile={userProfile} isAdminUser={isAdminUser} onLogout={() => signOut(auth)} onOpenAdmin={() => setShowAdminDashboard(true)} />;
+  return <MainApp user={user} userProfile={userProfile} isAdminUser={isAdminUser} onLogout={handleLogout} onOpenAdmin={() => setShowAdminDashboard(true)} />;
 }
 
 function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { user: User, userProfile: UserProfile | null, isAdminUser: boolean, onLogout: () => void, onOpenAdmin: () => void }) {
