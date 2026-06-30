@@ -42,6 +42,7 @@ export interface DocumentRecord {
   mimeType: string;
   status: 'idle' | 'processing' | 'success' | 'error';
   error?: string;
+  ocrProgress?: string;
   
   // Audit fields
   createdBy?: string;
