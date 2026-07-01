@@ -13,8 +13,8 @@ const app = express();
 const PORT = 3000;
 
 // Set up parsing middlewares with high limit for base64 images
-app.use(express.json({ limit: "15mb" }));
-app.use(express.urlencoded({ extended: true, limit: "15mb" }));
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 
 // Lazy initializer for Google Gen AI client
 let aiClient: GoogleGenAI | null = null;

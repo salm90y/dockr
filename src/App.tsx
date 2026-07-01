@@ -439,21 +439,12 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
       .catch(err => console.error("Failed to load categories from local API:", err));
   }, [isOfflineMode]);
 
-  // Auto-save Documents and Categories to LocalStorage on state changes for local-first/offline consistency and sync with Local API
+  // Auto-save Documents to LocalStorage on state changes for local-first/offline consistency
   useEffect(() => {
     if (documents && documents.length > 0) {
       localStorage.setItem('archiver_documents', JSON.stringify(documents));
-      
-      // If we are in offline mode, sync to local filesystem database
-      if (isOfflineMode) {
-        fetch('/api/local/documents/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(documents)
-        }).catch(err => console.error("Failed to sync documents to local API:", err));
-      }
     }
-  }, [documents, isOfflineMode]);
+  }, [documents]);
 
   useEffect(() => {
     if (categories && categories.length > 0) {
@@ -504,6 +495,13 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
       };
       if (!isOfflineMode) {
         await setDoc(doc(db, "documents", record.id), enriched);
+      } else {
+        // Save single document to local API when offline
+        fetch('/api/local/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(enriched)
+        }).catch(err => console.error("Failed to save doc to local API:", err));
       }
       logAction('create', record.id, record.documentNumber, record.documentSubject, `تم إضافة وثيقة جديدة: ${record.fileName}`);
     } catch (e) {
@@ -2104,6 +2102,24 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
           ocrProgress: undefined
         };
 
+        const activeDoc = documents.find(d => d.id === id);
+        const mergedDoc = {
+          ...(activeDoc || {}),
+          id,
+          fileName,
+          mimeType,
+          base64Data,
+          imageUrl: activeDoc?.imageUrl || `data:${mimeType};base64,${base64Data}`,
+          ...updates
+        };
+
+        // Save metadata changes to local server
+        fetch('/api/local/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mergedDoc)
+        }).catch(err => console.error("Failed to save OCR results to local API:", err));
+
         setDocuments(prev => prev.map(doc => {
           if (doc.id === id) {
             return {
@@ -2225,6 +2241,18 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
           console.error(e);
           handleFirestoreError(e, OperationType.UPDATE, `documents/${id}`);
         }
+      } else {
+        const activeDoc = documents.find(d => d.id === id);
+        if (activeDoc) {
+          fetch('/api/local/documents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...activeDoc,
+              ...updates
+            })
+          }).catch(err => console.error("Failed to save fallback extraction results to local API:", err));
+        }
       }
     } catch (err: any) {
       console.error('Metadata extraction failed:', err);
@@ -2249,6 +2277,19 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
         } catch (e) {
           console.error(e);
           handleFirestoreError(e, OperationType.UPDATE, `documents/${id}`);
+        }
+      } else {
+        const activeDoc = documents.find(d => d.id === id);
+        if (activeDoc) {
+          fetch('/api/local/documents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...activeDoc,
+              status: 'error',
+              error: errorMsg
+            })
+          }).catch(err => console.error("Failed to save error status to local API:", err));
         }
       }
     }
@@ -2344,6 +2385,20 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
     } else {
       if (updatedDoc) {
         logAction('update', docId, updatedDoc.documentNumber, updatedDoc.documentSubject, `تم تعديل الحقل محلياً: ${String(field)}`);
+        
+        // Save single document update to local API when offline
+        const enrichedDoc = {
+          ...updatedDoc,
+          [field]: value,
+          lastModifiedBy: user?.uid,
+          lastModifiedByName: userProfile?.fullName || 'مستخدم غير معروف',
+          updatedAt: Date.now()
+        };
+        fetch('/api/local/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(enrichedDoc)
+        }).catch(err => console.error("Failed to update local document field:", err));
       }
     }
   };
@@ -2376,6 +2431,11 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
     } else {
       if (docToDelete) {
         logAction('delete', id, docToDelete.documentNumber, docToDelete.documentSubject, `تم حذف المستند محلياً: ${docToDelete.fileName}`);
+        
+        // Delete document from local API when offline
+        fetch(`/api/local/documents/${id}`, {
+          method: 'DELETE'
+        }).catch(err => console.error("Failed to delete local document:", err));
       }
     }
   };
