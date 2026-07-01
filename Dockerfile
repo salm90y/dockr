@@ -25,7 +25,7 @@ ENV PORT=3000
 
 # Copy package files and install only production dependencies
 COPY package*.json ./
-RUN npm install --only=production --no-audit --no-fund
+RUN npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
 
 # Copy built application assets from the builder stage
 COPY --from=builder /app/dist ./dist
