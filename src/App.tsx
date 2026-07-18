@@ -447,6 +447,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
   const [ollamaModel, setOllamaModel] = useState<string>(() => {
     return safeStorage.getItem('archiver_ollama_model') || 'qwen2.5:7b';
   });
+  const [showOllamaSettingsModal, setShowOllamaSettingsModal] = useState<boolean>(false);
 
   useEffect(() => {
     safeStorage.setItem('archiver_is_offline', String(isOfflineMode));
@@ -3373,6 +3374,18 @@ ${text}`;
               </button>
 
               <div className="h-4 w-px bg-[#333] mx-1"></div>
+
+              {/* Ollama Settings Button */}
+              <button
+                onClick={() => setShowOllamaSettingsModal(true)}
+                className="flex items-center gap-1.5 bg-[#141414] hover:bg-[#222] border border-[#d4af3733] hover:border-[#d4af37] text-[#d4af37] hover:text-white px-2.5 py-1.5 rounded-sm text-[11px] font-bold transition-all cursor-pointer group shadow-sm"
+                title="إعدادات الذكاء الاصطناعي Ollama"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-[#d4af37] group-hover:scale-110 transition-transform" />
+                <span>إعدادات Ollama</span>
+              </button>
+
+              <div className="h-4 w-px bg-[#333] mx-1"></div>
               
               <button
                 onClick={onLogout}
@@ -5866,6 +5879,190 @@ ${text}`;
                     <Download className="w-3.5 h-3.5" />
                     <span>تأكيد وبدء التصدير</span>
                   </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
+        {/* Ollama AI & Offline Configuration Settings Modal */}
+        <AnimatePresence>
+          {showOllamaSettingsModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-[#0b0c0f] border border-[#d4af37]/40 rounded-md w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col h-[85vh] md:h-auto max-h-[90vh]"
+                dir="rtl"
+              >
+                {/* Header */}
+                <div className="flex justify-between items-center p-4 border-b border-gray-800/80 bg-[#0d0f14]">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-[#d4af37]/10 rounded-sm text-[#d4af37]">
+                      <Sparkles className="w-5 h-5 text-[#d4af37]" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white font-cairo">إعدادات الذكاء الاصطناعي والمعالجة المحلية (Ollama AI Setup)</h3>
+                      <p className="text-[10px] text-gray-400 font-cairo mt-0.5">تهيئة المعالج الذكي دون اتصال ومزامنة النماذج المحلية</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowOllamaSettingsModal(false)}
+                    className="p-1.5 text-gray-400 hover:text-white bg-[#141414] hover:bg-[#222] rounded-sm transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Content - Scrollable */}
+                <div className="p-5 space-y-4 overflow-y-auto flex-1 font-cairo text-right">
+                  
+                  {/* Alert Info */}
+                  <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded text-xs text-amber-200 leading-relaxed space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-amber-400">
+                      <Lightbulb className="w-4 h-4 shrink-0" />
+                      <span>ما هو Ollama وما فائدة تشغيله على جهازك؟</span>
+                    </div>
+                    <p className="text-[11px] text-gray-300">
+                      برنامج <strong>Ollama</strong> هو محرك يتيح لك تشغيل نماذج الذكاء الاصطناعي الكبيرة (مثل <strong>Qwen 2.5</strong> أو <strong>Llama 3</strong>) <strong>محلياً بنسبة 100%</strong> على حاسبتك الخاصة دون الحاجة لاتصال بالإنترنت.
+                    </p>
+                    <p className="text-[11px] text-gray-300">
+                      <strong>فائدة تنزيله على Docker أو كبرنامج مستقل:</strong> يضمن السرية التامة للبيانات (لا يتم إرسال أي وثيقة أو كتاب إداري إلى خوادم خارجية)، مع إمكانية استخلاص وتدقيق وتصنيف الكتب الإدارية وتصحيح الحروف المتقطعة لغوياً بشكل فوري حتى لو انقطع الإنترنت بالكامل في الدائرة أو المؤسسة.
+                    </p>
+                  </div>
+
+                  {/* Windows CMD / Docker Error Help Section */}
+                  <div className="p-3 bg-[#111] border border-gray-800 rounded space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold text-white">
+                      <AlertTriangle className="w-4 h-4 text-red-400" />
+                      <span>حل مشكلة خطأ &quot;Ollama is not recognized&quot; في موجه الأوامر:</span>
+                    </div>
+                    
+                    <p className="text-[11px] text-gray-400 leading-relaxed">
+                      هذا الخطأ يعني أن نظام الويندوز لا يعثر على أمر <code className="text-red-400 font-mono bg-black px-1 rounded">ollama</code> لأنك قمت بتنصيبه داخل حاوية Docker فقط، وبالتالي لا يمكن تشغيل الأمر مباشرة في سطر أوامر الويندوز الخارجي (الـ Host).
+                    </p>
+
+                    <div className="space-y-1.5 pt-1.5 text-[11px]">
+                      <strong className="text-gray-300 block">خطوات سحب وتفعيل الموديل العربي الذكي بشكل صحيح:</strong>
+                      <ol className="list-decimal list-inside space-y-1 text-gray-400 pl-2">
+                        <li>
+                          افتح الـ PowerShell على حاسبتك واكتب الأمر التالي للولوج إلى داخل حاوية دوكر وسحب الموديل العربي (Qwen 2.5):
+                          <div className="bg-black text-[#85e89d] p-2 rounded font-mono text-left direction-ltr text-[10px] my-1.5 overflow-x-auto select-all">
+                            docker exec -it ollama ollama run qwen2.5:7b
+                          </div>
+                        </li>
+                        <li>
+                          إذا لم تقم بتشغيل الحاوية بعد، يمكنك تشغيل Ollama على Docker بأمر واحد يفتح المنفذ الخارجي للمتصفح:
+                          <div className="bg-black text-[#79b8ff] p-2 rounded font-mono text-left direction-ltr text-[10px] my-1.5 overflow-x-auto select-all">
+                            docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+                          </div>
+                        </li>
+                        <li>
+                          تأكد من كتابة اسم الموديل بالضبط <code className="text-[#d4af37] font-mono bg-black px-1 rounded">qwen2.5:7b</code> (أو الموديل الذي قمت بسحبه) في الإعدادات أدناه لتوجيه المحلل لاستخدامه.
+                        </li>
+                      </ol>
+                    </div>
+                  </div>
+
+                  {/* Form Configuration Inputs */}
+                  <div className="space-y-3.5 pt-2 border-t border-gray-800">
+                    <div className="flex items-center justify-between p-2.5 bg-black/40 border border-gray-800 rounded">
+                      <div className="space-y-0.5">
+                        <span className="text-xs font-bold text-white block">حالة تشغيل المساعد الذكي المحلي:</span>
+                        <span className="text-[10px] text-gray-500 block">قم بتفعيل الخيار لتوجيه النظام لاستخدام ملقم Ollama عند سحب أو تصوير الوثائق</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={useOllama}
+                          onChange={(e) => setUseOllama(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-amber-500/20 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-gray-400 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500 peer-checked:after:bg-black"></div>
+                      </label>
+                    </div>
+
+                    {useOllama && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-gray-300 font-bold block">رابط ملقم Ollama (المنفذ الافتراضي هو 11434):</label>
+                          <input
+                            type="text"
+                            value={ollamaUrl}
+                            onChange={(e) => setOllamaUrl(e.target.value)}
+                            placeholder="http://localhost:11434"
+                            className="w-full bg-[#050608] border border-gray-800 text-xs text-white rounded px-3 py-2.5 focus:outline-none focus:border-amber-500 font-mono text-left direction-ltr"
+                          />
+                          <span className="text-[9px] text-gray-500 block">إذا كان دوكر يعمل على نفس الحاسبة، اتركه <code className="font-mono text-gray-400">http://localhost:11434</code></span>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-gray-300 font-bold block">اسم الموديل المنصب في Ollama:</label>
+                          <input
+                            type="text"
+                            value={ollamaModel}
+                            onChange={(e) => setOllamaModel(e.target.value)}
+                            placeholder="qwen2.5:7b"
+                            className="w-full bg-[#050608] border border-gray-800 text-xs text-white rounded px-3 py-2.5 focus:outline-none focus:border-amber-500 font-mono text-left direction-ltr"
+                          />
+                          <span className="text-[9px] text-gray-500 block">مثال: <code className="font-mono text-gray-400">qwen2.5:7b</code> أو <code className="font-mono text-gray-400">llama3</code> أو <code className="font-mono text-gray-400">mistral</code></span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+
+                {/* Footer Actions */}
+                <div className="p-4 bg-[#08080c] border-t border-gray-800/80 flex flex-col sm:flex-row justify-between items-center gap-3">
+                  <div className="text-[10px] text-gray-500 font-cairo">
+                    * احفظ الإعدادات للبدء بتحليل الكتب الإدارية أوفلاين.
+                  </div>
+                  <div className="flex gap-2.5 w-full sm:w-auto justify-end">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          showToast('info', 'جاري فحص الاتصال...', 'يتم الآن محاولة الاتصال بـ Ollama محلياً...');
+                          const testUrl = (ollamaUrl || 'http://localhost:11434').replace(/\/$/, "");
+                          const controller = new AbortController();
+                          const tId = setTimeout(() => controller.abort(), 4000); // 4s timeout
+                          
+                          const response = await fetch(`${testUrl}/api/tags`, { signal: controller.signal });
+                          clearTimeout(tId);
+                          
+                          if (response.ok) {
+                            const data = await response.json();
+                            const modelsList = data.models ? data.models.map((m: any) => m.name).join(', ') : 'متصل';
+                            showToast('success', 'تم الاتصال بنجاح! 🎉', `ملقم Ollama متصل وجاهز للعمل. الموديلات المتوفرة: ${modelsList}`);
+                          } else {
+                            showToast('error', 'فشل الاتصال بـ Ollama', `الملقم استجاب برمز خطأ: ${response.status}`);
+                          }
+                        } catch (e: any) {
+                          showToast('error', 'تعذر الوصول لـ Ollama', `تأكد من تشغيل Ollama وموافقة CORS. الخطأ: ${e.message || e}`);
+                        }
+                      }}
+                      className="px-4 py-2 bg-amber-950/20 hover:bg-amber-900/30 text-amber-400 border border-amber-500/30 text-xs font-bold rounded-sm transition-all cursor-pointer font-cairo"
+                    >
+                      فحص الاتصال بالملقم ⚡
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOllamaSettingsModal(false);
+                        showToast('success', 'تم حفظ الإعدادات', 'تم اعتماد إعدادات ملقم Ollama والموديل الخاص بك بنجاح.');
+                      }}
+                      className="px-6 py-2 bg-[#d4af37] hover:bg-[#b8962d] text-black text-xs font-bold rounded-sm transition-all cursor-pointer font-cairo"
+                    >
+                      حفظ واعتماد
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             </motion.div>
