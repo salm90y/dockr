@@ -6,6 +6,11 @@
     <title>My Google AI Studio App</title>
     <script>
       window.addEventListener('error', function(event) {
+        var msgStr = (event.message || '').toString();
+        if (msgStr.includes('WebSocket') || msgStr.includes('websocket') || msgStr.includes('socket')) {
+            return;
+        }
+        
         // Prevent default white screen behavior and show error visually
         setTimeout(function() {
           if (document.getElementById('diagnostic-error-overlay')) return;
@@ -38,6 +43,15 @@
       });
 
       window.addEventListener('unhandledrejection', function(event) {
+        var reason = event.reason;
+        var msg = reason ? (reason.message || reason) : 'Unhandled promise rejection';
+        
+        // Ignore benign WebSocket errors from Vite due to HMR being disabled
+        var msgStr = typeof msg === 'string' ? msg : JSON.stringify(msg);
+        if (msgStr.includes('WebSocket') || msgStr.includes('websocket') || msgStr.includes('socket')) {
+            return;
+        }
+
         setTimeout(function() {
           if (document.getElementById('diagnostic-error-overlay')) return;
           var errorDiv = document.createElement('div');

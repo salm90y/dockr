@@ -2258,25 +2258,25 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
             console.log("Attempting direct browser-to-local-Ollama extraction at:", ollamaUrl);
             const targetUrl = (ollamaUrl || 'http://localhost:11434').replace(/\/$/, "");
             
-            const systemPrompt = `أنت نظام ذكي متخصص في تحليل واستخراج البيانات من الكتب الإدارية والوثائق الرسمية باللغة العربية.
-مهمتك هي تصحيح أي أخطاء في القراءة الآلية (مثل الحروف المتقطعة والمتباعدة والكلمات المكررة) واستخراج البيانات بصيغة JSON مطابقة تماماً للمواصفات التالية:
+            const systemPrompt = `أنت خبير محترف ومسؤول أرشيف عراقي وعربي، خبير في تحليل الكتب الإدارية والوثائق الرسمية بدقة متناهية.
+مهمتك هي استخراج البيانات من الصور أو النصوص، وتصحيح أي أخطاء لغوية أو تشوهات ناتجة عن القراءة الآلية، وإنتاج نص كامل وسليم جداً باللغة العربية الفصحى. يجب استخراج البيانات بصيغة JSON حصراً مطابقة تماماً للمواصفات التالية:
 {
-  "documentNumber": "رقم الكتاب فقط (الجزء الأخير بعد علامة المائلة أو الناقص، مثل '١٢٣' أو 'ب')",
-  "documentDate": "تاريخ الكتاب كما هو مكتوب هجرياً أو ميلادياً",
+  "documentNumber": "رقم الكتاب الأصلي (الرقم الرئيسي للوثيقة، فقط الجزء الأخير بعد المائلة أو الناقص)",
+  "documentDate": "تاريخ صدور الكتاب (الرئيسي)",
   "issuingAuthority": "الجهة التي أصدرت الكتاب",
-  "destinationAuthority": "الجهة الموجه إليها الكتاب (مثل: مديرية شرطة الطاقة / الإدارة / التقاعد)",
-  "documentSubject": "موضوع الكتاب الرئيسي أو عنوانه بكلمات بسيطة ومباشرة",
-  "documentContent": "مضمون الكتاب ومحتواه بشكل نقي واضح بدون أخطاء مطبعية أو حروف متقطعة وبدون ترويسات",
+  "destinationAuthority": "الجهة الموجه إليها الكتاب",
+  "documentSubject": "موضوع الكتاب بكلمات واضحة",
+  "documentContent": "النص الكامل والشامل لمحتوى الكتاب كما هو بالتمام والكمال (من البداية للنهاية)، مصحح لغوياً بشكل ممتاز وخالي من أي حروف متقطعة أو كلمات غير مفهومة. يجب أن يكون النص مقروءاً بوضوح ومطابقاً لروح الكتاب الرسمي.",
   "confidenceScore": 95,
-  "documentType": "نوع الوثيقة من القيم التالية حصراً: 'تقاعد', 'عقوبة', 'نقل وإلحاق', 'التحاق', 'سحب يد', 'إجازة سنوية', 'وفاة', 'تاريخ انفكاك', 'أخرى'",
+  "documentType": "نوع الوثيقة من: 'تقاعد', 'عقوبة', 'نقل وإلحاق', 'التحاق', 'سحب يد', 'إجازة سنوية', 'وفاة', 'تاريخ انفكاك', 'أخرى'",
   "references": [
     {
-      "referenceNumber": "رقم الكتاب المشار إليه",
-      "referenceDate": "تاريخ الكتاب المشار إليه",
-      "referenceAuthority": "جهة إصدار الكتاب المشار إليه"
+      "referenceNumber": "رقم الكتاب/المرجع المذكور في النص",
+      "referenceDate": "تاريخ هذا الكتاب المرجعي",
+      "referenceAuthority": "جهة إصدار هذا الكتاب المرجعي"
     }
   ],
-  "penaltyType": "نوع العقوبة إذا كان الكتاب عقوبة (لفت نظر، إنذار، توبيخ، إلخ)",
+  "penaltyType": "نوع العقوبة إن وجدت",
   "legalArticle": "المادة القانونية المستند عليها إن وجدت",
   "penaltyReason": "سبب العقوبة إن وجد",
   "penaltyDuration": "مدة العقوبة إن وجدت",
@@ -2284,10 +2284,12 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
   "hrLetterDate": "تاريخ كتاب الموارد البشرية إن وجد",
   "securityLetterNumber": "رقم كتاب وكالة الأمن الاتحادي إن وجد",
   "securityLetterDate": "تاريخ كتاب وكالة الأمن الاتحادي إن وجد",
-  "extractedText": "النص الكامل المستخلص والمصحح لغوياً مع دمج الحروف المتقطعة وإصلاح المسافات الزائدة"
+  "extractedText": "محتوى إضافي لتأكيد صحة النص إذا لزم الأمر، أو اتركه فارغاً"
 }
-تنبيه هام جداً: بالنسبة لجميع أرقام الكتب المستخرجة، يرجى الاقتصار فقط على ذكر الرقم الأخير الذي يأتي بعد علامة الفاصلة المائلة '/' أو الناقص '-' وتجاهل الأجزاء السابقة.
-أجب بصيغة JSON صالحة فقط دون أي نصوص إضافية أو علامات الاقتباس البرمجية.`;
+تعليمات صارمة جداً:
+1. استخرج كل وأي رقم كتاب مذكور في محتوى الوثيقة وضعه في مصفوفة (references) كحقل منفصل مع تاريخه وجهة إصداره (مثل إشارة إلى كتاب الوزارة المرقم كذا بتاريخ كذا).
+2. حقل (documentContent) يجب أن يحتوي على نص الوثيقة الكامل دون اختصار وبشكل مفهوم جداً وبلغة عربية فصحى صحيحة.
+3. أجب فقط بنص JSON صالح، دون أي كلمات قبل أو بعد القوسين {} ودون استخدام علامات Markdown البرمجية.`;
 
             const promptContent = `اسم الملف الأصلي: ${fileName}
 النص المستخلص من القارئ الضوئي (OCR) والذي قد يحتوي على حروف متقطعة أو أخطاء:
@@ -5108,26 +5110,7 @@ ${text}`;
                               <>
                                 <div className="space-y-4">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="col-span-1 md:col-span-2 space-y-1.5">
-                                  <span className="text-[10px] text-[#d4af37] block font-black uppercase tracking-wider">تفاصيل وثيقة الأرشفة / مضمون الكتاب (تصميم حر بدون حدود أو صناديق مقيدة):</span>
-                                  <textarea 
-                                    value={selectedDoc.documentContent || selectedDoc.documentSubject || ''}
-                                    disabled={selectedDoc.status === 'processing'}
-                                    ref={(el) => {
-                                      if (el) {
-                                        el.style.height = 'auto';
-                                        el.style.height = `${Math.max(el.scrollHeight, 550)}px`;
-                                      }
-                                    }}
-                                    onChange={(e) => {
-                                      handleUpdateField(selectedDoc.id, 'documentContent', e.target.value);
-                                      e.target.style.height = 'auto';
-                                      e.target.style.height = `${Math.max(e.target.scrollHeight, 550)}px`;
-                                    }}
-                                    className="w-full text-sm bg-transparent border-0 border-r-2 border-[#d4af37]/40 focus:border-[#d4af37] py-3 px-4 text-white leading-relaxed focus:outline-none focus:ring-0 resize-none overflow-hidden transition-all min-h-[550px] shadow-none"
-                                    placeholder="اكتب مضمون وتفاصيل الكتاب بحرية كاملة دون حدود للارتفاع أو خلفية مقيدة..."
-                                  />
-                                </div>
+                                
                                   <div className="col-span-1 md:col-span-2 space-y-1.5">
                                     <span className="text-[10px] text-[#d4af37] block font-black uppercase tracking-wider">الأسماء الواردة في الكتاب (اسم في كل سطر أو مفصولة بفواصل):</span>
                                     <textarea 
@@ -5320,6 +5303,27 @@ ${text}`;
                             </div>
                               </>
                             )}
+
+                            <div className="col-span-1 md:col-span-2 space-y-1.5">
+                                  <span className="text-[10px] text-[#d4af37] block font-black uppercase tracking-wider">تفاصيل وثيقة الأرشفة / مضمون الكتاب (تصميم حر بدون حدود أو صناديق مقيدة):</span>
+                                  <textarea 
+                                    value={selectedDoc.documentContent || selectedDoc.documentSubject || ''}
+                                    disabled={selectedDoc.status === 'processing'}
+                                    ref={(el) => {
+                                      if (el) {
+                                        el.style.height = 'auto';
+                                        el.style.height = `${Math.max(el.scrollHeight, 550)}px`;
+                                      }
+                                    }}
+                                    onChange={(e) => {
+                                      handleUpdateField(selectedDoc.id, 'documentContent', e.target.value);
+                                      e.target.style.height = 'auto';
+                                      e.target.style.height = `${Math.max(e.target.scrollHeight, 550)}px`;
+                                    }}
+                                    className="w-full text-sm bg-transparent border-0 border-r-2 border-[#d4af37]/40 focus:border-[#d4af37] py-3 px-4 text-white leading-relaxed focus:outline-none focus:ring-0 resize-none overflow-hidden transition-all min-h-[550px] shadow-none"
+                                    placeholder="اكتب مضمون وتفاصيل الكتاب بحرية كاملة دون حدود للارتفاع أو خلفية مقيدة..."
+                                  />
+                                </div>
 
                             {/* Digital sealing / verification QR Code */}
                             {selectedDoc.status === 'success' && qrCodeUrl && (
@@ -5951,7 +5955,7 @@ ${text}`;
                         <li>
                           افتح الـ PowerShell واكتب الأمر التالي لسحب موديل متقدم يدعم الصور (Vision) لضمان دقة القراءة المباشرة دون الاعتماد على القارئ الضوئي الضعيف:
                           <div className="bg-black text-[#85e89d] p-2 rounded font-mono text-left direction-ltr text-[10px] my-1.5 overflow-x-auto select-all">
-                            docker exec -it ollama ollama run llama3.2-vision
+                            docker exec -it ollama ollama run minicpm-v
                           </div>
                           <span className="text-[10px] text-amber-500/80 block mt-1">ملاحظة: الموديلات النصية العادية (مثل qwen2.5:7b) لا ترى الصور، وتعتمد على القارئ الضوئي المحلي (Tesseract) الذي غالباً ما يخطئ في اللغة العربية ويولد نصوصاً غير مفهومة.</span>
                         </li>
@@ -5962,7 +5966,7 @@ ${text}`;
                           </div>
                         </li>
                         <li>
-                          تأكد من كتابة اسم الموديل بالضبط <code className="text-[#d4af37] font-mono bg-black px-1 rounded">llama3.2-vision</code> في الإعدادات أدناه لتوجيه المحلل لاستخدامه.
+                          تأكد من كتابة اسم الموديل بالضبط <code className="text-[#d4af37] font-mono bg-black px-1 rounded">minicpm-v</code> في الإعدادات أدناه لتوجيه المحلل لاستخدامه.
                         </li>
                       </ol>
                     </div>
@@ -5973,7 +5977,7 @@ ${text}`;
                         إذا ظهر لك خطأ يخبرك بأن الشبكة غير متصلة عند محاولة تحميل الموديل داخل دوكر، فهذا يعني أن حاوية دوكر ليس لديها صلاحية الوصول للإنترنت من حاسبتك.
                       </p>
                       <p className="text-[10px] text-gray-300">
-                        <strong>الحل الأسهل والأسرع:</strong> لا تستخدم دوكر. قم بتحميل برنامج Ollama مباشرة للويندوز من موقعهم الرسمي <a href="https://ollama.com/download/windows" target="_blank" rel="noreferrer" className="text-blue-400 underline">ollama.com</a>. بعد تثبيته، افتح موجه الأوامر (CMD) العادي واكتب: <code className="text-[#85e89d] font-mono bg-black px-1 rounded">ollama run llama3.2-vision</code>
+                        <strong>الحل الأسهل والأسرع:</strong> لا تستخدم دوكر. قم بتحميل برنامج Ollama مباشرة للويندوز من موقعهم الرسمي <a href="https://ollama.com/download/windows" target="_blank" rel="noreferrer" className="text-blue-400 underline">ollama.com</a>. بعد تثبيته، افتح موجه الأوامر (CMD) العادي واكتب: <code className="text-[#85e89d] font-mono bg-black px-1 rounded">ollama run minicpm-v</code>
                       </p>
                     </div>
                   </div>
@@ -6016,10 +6020,10 @@ ${text}`;
                             type="text"
                             value={ollamaModel}
                             onChange={(e) => setOllamaModel(e.target.value)}
-                            placeholder="llama3.2-vision"
+                            placeholder="minicpm-v"
                             className="w-full bg-[#050608] border border-gray-800 text-xs text-white rounded px-3 py-2.5 focus:outline-none focus:border-amber-500 font-mono text-left direction-ltr"
                           />
-                          <span className="text-[9px] text-gray-500 block">مثال: <code className="font-mono text-gray-400">llama3.2-vision</code> أو <code className="font-mono text-gray-400">minicpm-v</code> أو <code className="font-mono text-gray-400">qwen2.5:7b</code></span>
+                          <span className="text-[9px] text-gray-500 block">هام للغة العربية: يُفضل بشدة استخدام <code className="font-mono text-amber-400">minicpm-v</code> أو <code className="font-mono text-amber-400">qwen2-vl</code> لأن llama3 يخطئ كثيراً في العربية.</span>
                         </div>
                       </div>
                     )}
