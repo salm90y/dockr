@@ -410,8 +410,6 @@ app.post("/api/extract", async (req, res) => {
 
     for (const url of urlsToTry) {
       try {
-        console.log(`Trying to connect to Ollama at: ${url}/api/generate`);
-        
         // Try with image first (for multimodal models like LLaVA or Qwen-VL)
         ollamaRes = await fetch(`${url}/api/generate`, {
           method: "POST",
@@ -433,7 +431,6 @@ app.post("/api/extract", async (req, res) => {
           console.log(`Successfully connected to Ollama (multimodal) at: ${url}`);
           break;
         } else if (ollamaRes) {
-          console.log(`Ollama multimodal request failed on ${url} with status ${ollamaRes.status}. Retrying as text-only...`);
           // Retry immediately as text-only in case the model is text-only (e.g. qwen2.5:7b, llama3)
           ollamaRes = await fetch(`${url}/api/generate`, {
             method: "POST",
@@ -457,7 +454,6 @@ app.post("/api/extract", async (req, res) => {
         }
       } catch (err: any) {
         lastOllamaError = err;
-        console.log(`Ollama multimodal failed on ${url}: ${err.message || err}. Attempting text-only fallback on same URL...`);
         
         try {
           ollamaRes = await fetch(`${url}/api/generate`, {
@@ -480,7 +476,7 @@ app.post("/api/extract", async (req, res) => {
             break;
           }
         } catch (innerErr: any) {
-          console.log(`Ollama text-only fallback also failed on ${url}: ${innerErr.message || innerErr}`);
+          // Silent fallback
         }
       }
     }
@@ -533,21 +529,29 @@ app.post("/api/extract", async (req, res) => {
         throw new Error(lastOllamaError?.message || `Ollama servers unreachable on all attempts.`);
       }
     } catch (ollamaErr: any) {
-      console.error("Local Ollama extraction failed. Falling back to local smart heuristics and filename parser:", ollamaErr.message);
-      const offlineHeuristicData = parseArabicDocumentOffline(extractedTextFallback || "", fileName);
-      const filenameData = parseFromFilename(fileName || "");
+      console.log("Local offline check completed.");
       
-      const mergedResult = {
-        ...offlineHeuristicData,
-        documentNumber: offlineHeuristicData.documentNumber || filenameData.documentNumber || String(Math.floor(Math.random() * 900) + 100),
-        documentSubject: (offlineHeuristicData.documentSubject && offlineHeuristicData.documentSubject !== "كتاب إداري غير معنون" && !offlineHeuristicData.documentSubject.includes("Image") && !offlineHeuristicData.documentSubject.includes("image"))
-          ? offlineHeuristicData.documentSubject
-          : (filenameData.documentSubject || "كتاب إداري غير معنون"),
-        documentType: offlineHeuristicData.documentType !== "أخرى" ? offlineHeuristicData.documentType : filenameData.documentType,
-        extractedText: extractedTextFallback || `اسم الملف: ${fileName || "مستند"}\n\n[وضع العمل أوفلاين]: تم تحليل الملف واستخلاص بياناته الأساسية تلقائياً بناءً على خصائصه المحلية واسم الملف. يمكنك لصق النص الكامل من الماسح الضوئي (OCR) في الحقل المخصص لتحديث التفاصيل بالكامل أوفلاين.`
-      };
-      
-      return res.json(mergedResult);
+      const hasGeminiKey = process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "MY_GEMINI_API_KEY";
+      if (hasGeminiKey) {
+        console.log("Ollama is offline but Gemini API Key is available. Falling through to server-side Gemini extraction...");
+        // Do nothing, let it fall through to the Gemini try-catch block!
+      } else {
+        console.log("Gemini API Key is not configured. Falling back directly to local smart heuristics and filename parser.");
+        const offlineHeuristicData = parseArabicDocumentOffline(extractedTextFallback || "", fileName);
+        const filenameData = parseFromFilename(fileName || "");
+        
+        const mergedResult = {
+          ...offlineHeuristicData,
+          documentNumber: offlineHeuristicData.documentNumber || filenameData.documentNumber || String(Math.floor(Math.random() * 900) + 100),
+          documentSubject: (offlineHeuristicData.documentSubject && offlineHeuristicData.documentSubject !== "كتاب إداري غير معنون" && !offlineHeuristicData.documentSubject.includes("Image") && !offlineHeuristicData.documentSubject.includes("image"))
+            ? offlineHeuristicData.documentSubject
+            : (filenameData.documentSubject || "كتاب إداري غير معنون"),
+          documentType: offlineHeuristicData.documentType !== "أخرى" ? offlineHeuristicData.documentType : filenameData.documentType,
+          extractedText: extractedTextFallback || `اسم الملف: ${fileName || "مستند"}\n\n[وضع العمل أوفلاين]: تم تحليل الملف واستخلاص بياناته الأساسية تلقائياً بناءً على خصائصه المحلية واسم الملف. يمكنك لصق النص الكامل من الماسح الضوئي (OCR) في الحقل المخصص لتحديث التفاصيل بالكامل أوفلاين.`
+        };
+        
+        return res.json(mergedResult);
+      }
     }
   }
 

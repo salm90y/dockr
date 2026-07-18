@@ -4738,164 +4738,43 @@ ${text}`;
                               </span>
                             </div>
                           </div>
-                          <div className="flex gap-2 shrink-0">
-                            {selectedDoc.status === 'success' && (
-                              <>
-                                <button
-                                  onClick={() => {
-                                    setPrintTargetDoc(selectedDoc);
-                                    setShowPrintConfirmModal(true);
-                                  }}
-                                  className="flex items-center gap-1.5 px-4 py-2 bg-[#d4af37] text-black text-xs font-bold rounded-sm cursor-pointer hover:bg-[#b8962d] transition-colors shadow-md"
-                                  title="طباعة صورة الوثيقة"
-                                >
-                                  <Printer className="w-3.5 h-3.5" />
-                                  <span>طباعة الوثيقة</span>
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setPdfTargetDoc(selectedDoc);
-                                    setShowPdfConfirmModal(true);
-                                  }}
-                                  className="flex items-center gap-1.5 px-4 py-2 bg-red-700 text-white text-xs font-bold rounded-sm cursor-pointer hover:bg-red-600 transition-colors shadow-md"
-                                  title="تصدير ملف PDF مصدق"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                  <span>تصدير مصدق</span>
-                                </button>
-                              </>
-                            )}
-                            <button
-                              onClick={() => {
-                                if (confirm('هل أنت متأكد من حذف هذا السجل نهائياً؟')) {
-                                  handleDeleteDoc(selectedDoc.id);
-                                }
-                              }}
-                              className="p-2 text-red-400 hover:text-white bg-[#111] hover:bg-red-950/30 border border-[#222] rounded-sm transition-colors cursor-pointer"
-                              title="حذف من الأرشيف"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
                         </div>
 
-                        {/* Two-Column Grid for Image and Form */}
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                          
-                          {/* Right Side: Image Preview Container (lg:col-span-5) */}
-                          <div className="lg:col-span-5 space-y-4">
-                            <span className="text-[10px] text-[#888] font-black uppercase tracking-wider block">صورة الوثيقة الممسوحة:</span>
-                            <div className="border border-[#1a1a1a] rounded-sm overflow-hidden bg-black/40 h-[240px] sm:h-[320px] lg:h-[750px] flex flex-col items-center justify-center relative group p-3">
-                              <DocumentAnnotator
-                                doc={selectedDoc}
-                                onUpdateDoc={(updatedFields) => {
-                                  Object.entries(updatedFields).forEach(([field, value]) => {
-                                    handleUpdateField(selectedDoc.id, field as keyof DocumentRecord, value);
-                                  });
-                                }}
-                                containerClassName="w-full h-full flex items-center justify-center relative select-none"
-                                imageClassName="max-h-[220px] sm:max-h-[300px] lg:max-h-[580px] object-contain shadow-2xl transition-all duration-300"
-                                maxHeightClass="max-h-[580px]"
-                              />
-                              
-                              {/* Processing Loader Overlay */}
-                              {selectedDoc.status === 'processing' && (
-                                <div className="absolute inset-0 bg-[#000]/80 backdrop-blur-xs flex flex-col items-center justify-center text-white">
-                                  <Loader2 className="w-10 h-10 animate-spin text-[#d4af37] mb-3" />
-                                  <span className="text-xs font-bold text-center">
-                                    {selectedDoc.ocrProgress || "جاري استخلاص وقراءة البيانات بالذكاء الاصطناعي..."}
-                                  </span>
-                                </div>
-                              )}
-
-                              {/* Error State Overlay */}
-                              {selectedDoc.status === 'error' && (
-                                <div className="absolute inset-0 bg-red-950/90 p-5 flex flex-col items-center justify-center text-center">
-                                  <AlertCircle className="w-10 h-10 text-red-500 mb-3" />
-                                  <span className="text-xs font-bold text-red-200">فشلت معالجة قراءة المستند</span>
-                                  <p className="text-[10px] text-red-300 mt-2 max-w-xs">{selectedDoc.error || 'حدث خطأ غير معروف'}</p>
-                                  <button
-                                    onClick={() => extractMetadata(selectedDoc.id, selectedDoc.base64Data, selectedDoc.mimeType, selectedDoc.fileName)}
-                                    className="mt-3 bg-red-800 hover:bg-red-700 text-white px-4 py-1.5 rounded-sm text-[10px] font-bold transition-all"
-                                  >
-                                    إعادة المحاولة
-                                  </button>
-                                </div>
-                              )}
+                          {/* Mode toggle bar */}
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#0d0d0d] border border-[#1a1a1a] p-3 rounded-sm mb-4">
+                            <div className="flex items-center gap-2">
+                              <Eye className="w-4 h-4 text-[#d4af37]" />
+                              <span className="text-xs font-bold text-white font-cairo">وضع المراجعة الحالي:</span>
+                            </div>
+                            <div className="flex items-center gap-2 w-full sm:w-auto">
+                              <button
+                                type="button"
+                                onClick={() => setIsReadOnlyArchive(true)}
+                                className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
+                                  isReadOnlyArchive 
+                                    ? 'bg-[#d4af37]/10 border-[#d4af37]/30 text-[#d4af37]' 
+                                    : 'bg-[#121212] border-[#222] text-[#888] hover:text-white'
+                                }`}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>نمط القراءة فقط (مريح للعين)</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setIsReadOnlyArchive(false)}
+                                className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
+                                  !isReadOnlyArchive 
+                                    ? 'bg-[#d4af37]/20 border-[#d4af37]/40 text-[#d4af37]' 
+                                    : 'bg-[#121212] border-[#222] text-[#888] hover:text-white'
+                                }`}
+                              >
+                                <Sparkles className="w-3.5 h-3.5 text-[#d4af37]" />
+                                <span>تعديل البيانات والمدخلات</span>
+                              </button>
                             </div>
                           </div>
 
-                          {/* Left Side: Details Form Container (lg:col-span-7) */}
-                          <div className="lg:col-span-7 space-y-5">
-                            {/* Duplicate Book Number Alert Banner */}
-                            {(() => {
-                              const trimmedNum = selectedDoc.documentNumber ? selectedDoc.documentNumber.trim() : '';
-                              const duplicateDoc = trimmedNum 
-                                ? documents.find(d => d.id !== selectedDoc.id && d.documentNumber && d.documentNumber.trim() === trimmedNum)
-                                : null;
-                              
-                              if (!duplicateDoc) return null;
-
-                              return (
-                                <motion.div 
-                                  initial={{ opacity: 0, y: -10 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  className="bg-[#241710] border border-amber-600/30 rounded-sm p-4 text-xs font-cairo flex gap-3 items-start text-amber-200 shadow-sm"
-                                >
-                                  <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5 animate-pulse" />
-                                  <div className="space-y-1 flex-1">
-                                    <span className="font-bold text-amber-400 block">تنبيه تكرار رقم الكتاب بالأرشيف:</span>
-                                    <p className="text-[#ccc] leading-relaxed">
-                                      رقم الكتاب الحالي <strong className="font-mono text-white">({trimmedNum})</strong> مطابق ومسجل مسبقاً في مستند آخر بعنوان <strong className="text-amber-300">"{duplicateDoc.documentSubject || duplicateDoc.fileName}"</strong>. يرجى مراجعة الرقم لتجنب الازدواجية وتكرار الأرشفة.
-                                    </p>
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedDocId(duplicateDoc.id)}
-                                      className="text-[10px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1 rounded mt-2 transition-all cursor-pointer border border-amber-500/20 animate-pulse"
-                                    >
-                                      <Eye className="w-3.5 h-3.5" />
-                                      <span>عرض ومقارنة المستند المطابق الآخر في الأرشيف</span>
-                                    </button>
-                                  </div>
-                                </motion.div>
-                              );
-                            })()}
-
-                            {/* Mode toggle bar */}
-                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#0d0d0d] border border-[#1a1a1a] p-3 rounded-sm mb-4">
-                              <div className="flex items-center gap-2">
-                                <Eye className="w-4 h-4 text-[#d4af37]" />
-                                <span className="text-xs font-bold text-white font-cairo">وضع المراجعة الحالي:</span>
-                              </div>
-                              <div className="flex items-center gap-2 w-full sm:w-auto">
-                                <button
-                                  type="button"
-                                  onClick={() => setIsReadOnlyArchive(true)}
-                                  className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
-                                    isReadOnlyArchive 
-                                      ? 'bg-[#d4af37]/10 border-[#d4af37]/30 text-[#d4af37]' 
-                                      : 'bg-[#121212] border-[#222] text-[#888] hover:text-white'
-                                  }`}
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                  <span>نمط القراءة فقط (مريح للعين)</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setIsReadOnlyArchive(false)}
-                                  className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
-                                    !isReadOnlyArchive 
-                                      ? 'bg-[#d4af37]/20 border-[#d4af37]/40 text-[#d4af37]' 
-                                      : 'bg-[#121212] border-[#222] text-[#888] hover:text-white'
-                                  }`}
-                                >
-                                  <Sparkles className="w-3.5 h-3.5 text-[#d4af37]" />
-                                  <span>تعديل البيانات والمدخلات</span>
-                                </button>
-                              </div>
-                            </div>
-
-                            {isReadOnlyArchive ? (
+                          {isReadOnlyArchive ? (
                               /* --- READ ONLY REVIEW MODE --- */
                               <div className="space-y-6">
                                 {/* Font Size Controller */}
@@ -4922,17 +4801,38 @@ ${text}`;
                                   </div>
                                 </div>
 
-                                {/* Doc Subject/Title */}
-                                <div className="bg-[#12110c] border border-[#2b2516]/40 rounded-sm p-5 md:p-6 shadow-sm relative overflow-hidden">
-                                  <div className="absolute top-0 left-0 w-32 h-32 bg-gradient-to-br from-[#d4af37]/5 to-transparent pointer-events-none"></div>
-                                  <span className="text-[10px] text-[#d4af37] block font-black uppercase tracking-wider mb-2">مضمون ومحتوى الكتاب:</span>
-                                  <p className={`text-white whitespace-pre-wrap leading-relaxed ${
-                                    readOnlyFontSize === 'sm' ? 'text-xs md:text-sm' :
-                                    readOnlyFontSize === 'base' ? 'text-sm md:text-base' :
-                                    readOnlyFontSize === 'lg' ? 'text-base md:text-lg' : 'text-lg md:text-xl'
-                                  }`}>
-                                    {selectedDoc.documentContent || selectedDoc.documentSubject || 'لا يوجد مضمون مكتوب'}
-                                  </p>
+                                {/* Official Metadata Grid */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-4 flex flex-col justify-between space-y-1.5">
+                                    <span className="text-[10px] text-[#888] font-black uppercase tracking-wider block">رقم الكتاب / القرار الإداري:</span>
+                                    <span className="text-xs md:text-sm font-mono font-bold text-white bg-[#121212] border border-[#1e1e1e] px-2.5 py-2 rounded-xs inline-block text-right">
+                                      {selectedDoc.documentNumber || 'غير مستخلص'}
+                                    </span>
+                                  </div>
+                                  <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-4 flex flex-col justify-between space-y-1.5">
+                                    <span className="text-[10px] text-[#888] font-black uppercase tracking-wider block">تاريخ صدور الكتاب:</span>
+                                    <span className="text-xs md:text-sm font-serif font-bold text-white bg-[#121212] border border-[#1e1e1e] px-2.5 py-2 rounded-xs inline-block text-right">
+                                      {selectedDoc.documentDate || 'غير مستخلص'}
+                                    </span>
+                                  </div>
+                                  <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-4 flex flex-col justify-between space-y-1.5">
+                                    <span className="text-[10px] text-[#888] font-black uppercase tracking-wider block">جهة الإصدار الرسمية:</span>
+                                    <span className="text-xs md:text-sm font-bold text-[#e5e5e5] bg-[#121212] border border-[#1e1e1e] px-2.5 py-2 rounded-xs inline-block text-right">
+                                      {selectedDoc.issuingAuthority || 'غير مستخلص'}
+                                    </span>
+                                  </div>
+                                  <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-4 flex flex-col justify-between space-y-1.5">
+                                    <span className="text-[10px] text-[#888] font-black uppercase tracking-wider block">الجهة الموجه إليها الكتاب:</span>
+                                    <span className="text-xs md:text-sm font-bold text-[#e5e5e5] bg-[#121212] border border-[#1e1e1e] px-2.5 py-2 rounded-xs inline-block text-right">
+                                      {selectedDoc.destinationAuthority || 'غير مستخلص'}
+                                    </span>
+                                  </div>
+                                  <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-4 flex flex-col justify-between space-y-1.5 sm:col-span-2">
+                                    <span className="text-[10px] text-[#888] font-black uppercase tracking-wider block">تصنيف الوثيقة الإدارية:</span>
+                                    <span className="text-xs md:text-sm font-bold text-[#d4af37] bg-[#12110c] border border-[#d4af37]/20 px-2.5 py-2 rounded-xs inline-block text-right">
+                                      {selectedDoc.documentType || 'أخرى'}
+                                    </span>
+                                  </div>
                                 </div>
 
                                 {/* Names Section */}
@@ -4967,40 +4867,6 @@ ${text}`;
                                   )}
                                 </div>
 
-                                {/* Official Metadata */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                  <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-3.5 flex flex-col justify-between">
-                                    <span className="text-[9px] text-[#666] font-bold block mb-1">رقم الكتاب / القرار الإداري:</span>
-                                    <span className="text-xs md:text-sm font-mono font-bold text-white bg-[#121212] border border-[#1e1e1e] px-2.5 py-1 rounded-xs inline-block">
-                                      {selectedDoc.documentNumber || 'غير مستخلص'}
-                                    </span>
-                                  </div>
-                                  <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-3.5 flex flex-col justify-between">
-                                    <span className="text-[9px] text-[#666] font-bold block mb-1">تاريخ صدور الكتاب:</span>
-                                    <span className="text-xs md:text-sm font-serif font-bold text-white bg-[#121212] border border-[#1e1e1e] px-2.5 py-1 rounded-xs inline-block">
-                                      {selectedDoc.documentDate || 'غير مستخلص'}
-                                    </span>
-                                  </div>
-                                  <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-3.5 flex flex-col justify-between">
-                                    <span className="text-[9px] text-[#666] font-bold block mb-1">جهة الإصدار الرسمية:</span>
-                                    <span className="text-xs md:text-sm font-bold text-[#e5e5e5]">
-                                      {selectedDoc.issuingAuthority || 'غير مستخلص'}
-                                    </span>
-                                  </div>
-                                  <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-3.5 flex flex-col justify-between">
-                                    <span className="text-[9px] text-[#666] font-bold block mb-1">الجهة الموجه إليها الكتاب:</span>
-                                    <span className="text-xs md:text-sm font-bold text-[#e5e5e5]">
-                                      {selectedDoc.destinationAuthority || 'غير مستخلص'}
-                                    </span>
-                                  </div>
-                                  <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-3.5 flex flex-col justify-between">
-                                    <span className="text-[9px] text-[#666] font-bold block mb-1">تصنيف الوثيقة الإدارية:</span>
-                                    <span className="text-xs md:text-sm font-bold text-[#d4af37]">
-                                      {selectedDoc.documentType || 'أخرى'}
-                                    </span>
-                                  </div>
-                                </div>
-
                                 {/* Custom Penalty Fields */}
                                 {selectedDoc.documentType === 'عقوبة' && (
                                   <div className="bg-[#1b1212] border border-[#4a1f1f]/35 rounded-sm p-4 space-y-3">
@@ -5029,28 +4895,51 @@ ${text}`;
                                   </div>
                                 )}
 
-                                {/* References List */}
-                                <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-4 space-y-3">
-                                  <span className="text-[10px] text-[#888] font-black uppercase tracking-wider block">الإشارات والكتب المرجعية المسجلة:</span>
+                                {/* References List (Sub-documents mentioned in the text) */}
+                                <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-4 space-y-3.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] text-[#888] font-black uppercase tracking-wider block">الكتب والمستندات الفرعية المذكورة في هذا الكتاب (الإشارات المرجعية):</span>
+                                    {selectedDoc.references && selectedDoc.references.length > 0 && (
+                                      <span className="text-[9px] bg-amber-500/10 text-[#d4af37] border border-amber-500/20 px-2 py-0.5 rounded-sm">
+                                        عدد الكتب المستخلصة: {selectedDoc.references.length}
+                                      </span>
+                                    )}
+                                  </div>
                                   {(!selectedDoc.references || selectedDoc.references.length === 0) ? (
-                                    <p className="text-xs text-[#444] italic">لا توجد كتب مرجعية مسجلة حالياً.</p>
+                                    <p className="text-xs text-[#444] italic py-2">لا توجد كتب مرجعية أو إشارات فرعية مسجلة حالياً في هذا الكتاب.</p>
                                   ) : (
-                                    <div className="space-y-2.5">
+                                    <div className="space-y-4">
                                       {selectedDoc.references.map((ref, rIdx) => (
-                                        <div key={rIdx} className="bg-[#121212] border border-[#1c1c1c] p-3 rounded-xs flex flex-wrap items-center justify-between gap-4">
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-[9px] bg-[#1a1a1a] text-[#888] border border-[#222] w-5 h-5 rounded-full flex items-center justify-center font-mono font-bold">
+                                        <div key={rIdx} className="bg-[#0e0e10] border border-[#1a1c20] p-4 rounded-sm space-y-3 hover:border-amber-500/20 transition-all">
+                                          <div className="flex items-center gap-2 border-b border-[#1a1c20] pb-2">
+                                            <span className="text-[9px] bg-amber-500/10 text-[#d4af37] border border-amber-500/20 w-5 h-5 rounded-full flex items-center justify-center font-mono font-bold">
                                               {rIdx + 1}
                                             </span>
-                                            <div className="text-xs">
-                                              <span className="text-[#888]">رقم المرجع:</span> <strong className="text-white font-mono">{ref.referenceNumber || 'غير متوفر'}</strong>
+                                            <span className="text-[10px] font-bold text-gray-300 font-cairo">تفاصيل المستند / المرجع الفرعي المذكور:</span>
+                                          </div>
+                                          
+                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                            {/* Sub-doc Number */}
+                                            <div className="space-y-1">
+                                              <span className="text-[9px] text-[#666] block font-bold">رقم الكتاب الفرعي / المرجع:</span>
+                                              <span className="text-xs font-bold text-white block bg-[#050505] border border-[#161616] px-3 py-2 rounded-sm font-mono text-right">
+                                                {ref.referenceNumber || 'غير متوفر'}
+                                              </span>
                                             </div>
-                                          </div>
-                                          <div className="text-xs">
-                                            <span className="text-[#888]">تاريخ المرجع:</span> <strong className="text-white font-serif">{ref.referenceDate || 'غير متوفر'}</strong>
-                                          </div>
-                                          <div className="text-xs">
-                                            <span className="text-[#888]">الجهة المرجعية:</span> <strong className="text-[#d4af37]">{ref.referenceAuthority || 'غير متوفر'}</strong>
+                                            {/* Sub-doc Date */}
+                                            <div className="space-y-1">
+                                              <span className="text-[9px] text-[#666] block font-bold">تاريخ الكتاب الفرعي:</span>
+                                              <span className="text-xs font-bold text-white block bg-[#050505] border border-[#161616] px-3 py-2 rounded-sm font-serif text-right">
+                                                {ref.referenceDate || 'غير متوفر'}
+                                              </span>
+                                            </div>
+                                            {/* Sub-doc Issuing Authority */}
+                                            <div className="space-y-1">
+                                              <span className="text-[9px] text-[#666] block font-bold">جهة إصدار الكتاب الفرعي:</span>
+                                              <span className="text-xs font-bold text-amber-400 block bg-[#050505] border border-[#161616] px-3 py-2 rounded-sm text-right">
+                                                {ref.referenceAuthority || 'غير متوفر'}
+                                              </span>
+                                            </div>
                                           </div>
                                         </div>
                                       ))}
@@ -5058,127 +4947,95 @@ ${text}`;
                                   )}
                                 </div>
 
-                                {/* OCR Full Text Comfort Display */}
-                                {selectedDoc.extractedText ? null : (
-                                  <div className="space-y-3 p-4 bg-amber-500/5 border border-dashed border-amber-500/20 rounded-sm mt-2 text-right direction-rtl">
-                                    <div className="flex items-center gap-1.5 text-amber-400 font-bold text-[11px]">
-                                      <Lightbulb className="w-4 h-4 text-amber-400 animate-pulse" />
-                                      <span>مساعد الاستخلاص الذكي دون اتصال (أوفلاين)</span>
-                                    </div>
-                                    <p className="text-[10px] text-gray-400 leading-relaxed font-sans">
-                                      هذا المستند لا يحتوي على نص مستخلص حالياً. يرجى لصق نص المستند (مثلاً المستخرج من برنامج السكنر) أدناه، وسيقوم محركنا المحلي بالاستخلاص الذكي وتعبئة كافة الحقول (الرقم، التاريخ، جهة الإصدار، الموضوع، العقوبات والمراجع) فوراً ودون إنترنت!
-                                    </p>
-                                    <textarea
-                                      placeholder="أدخل أو الصق نص الكتاب الإداري هنا للبدء..."
-                                      className="w-full min-h-[140px] max-h-[300px] bg-black text-[11px] text-[#ddd] p-3 border border-gray-800 focus:border-amber-500 focus:outline-none rounded-sm font-mono leading-relaxed"
-                                      onChange={(e) => {
-                                        const text = e.target.value;
-                                        if (text.trim().length > 10) {
-                                          const parsed = parseArabicDocumentOffline(text, selectedDoc.fileName);
-                                          setDocuments(prev => prev.map(doc => {
-                                            if (doc.id === selectedDoc.id) {
-                                              return {
-                                                ...doc,
-                                                extractedText: text,
-                                                documentNumber: parsed.documentNumber || doc.documentNumber,
-                                                documentDate: parsed.documentDate || doc.documentDate,
-                                                issuingAuthority: parsed.issuingAuthority || doc.issuingAuthority,
-                                                destinationAuthority: parsed.destinationAuthority || doc.destinationAuthority,
-                                                documentSubject: parsed.documentSubject || doc.documentSubject,
-                                                documentContent: parsed.documentContent || doc.documentContent,
-                                                documentType: parsed.documentType || doc.documentType,
-                                                penaltyType: parsed.penaltyType || doc.penaltyType,
-                                                legalArticle: parsed.legalArticle || doc.legalArticle,
-                                                penaltyReason: parsed.penaltyReason || doc.penaltyReason,
-                                                penaltyDuration: parsed.penaltyDuration || doc.penaltyDuration,
-                                                references: parsed.references || doc.references,
-                                                hrLetterNumber: parsed.hrLetterNumber || doc.hrLetterNumber,
-                                                securityLetterNumber: parsed.securityLetterNumber || doc.securityLetterNumber,
-                                                status: 'success'
-                                              };
-                                            }
-                                            return doc;
-                                          }));
-                                        }
-                                      }}
-                                    />
+                                {/* Full Text Content Display (Always at the very bottom of read-only mode) */}
+                                <div className="bg-[#12110c] border border-[#2b2516]/40 rounded-sm p-5 md:p-6 shadow-sm relative overflow-hidden">
+                                  <div className="absolute top-0 left-0 w-32 h-32 bg-gradient-to-br from-[#d4af37]/5 to-transparent pointer-events-none"></div>
+                                  <div className="flex items-center gap-2 mb-3 border-b border-[#2b2516]/20 pb-2">
+                                    <Sparkles className="w-4 h-4 text-[#d4af37]" />
+                                    <span className="text-[10px] text-[#d4af37] font-black uppercase tracking-wider block">النص الكامل والأصلي لمحتوى الكتاب الإداري:</span>
                                   </div>
-                                )}
+                                  <p className={`text-white whitespace-pre-wrap leading-relaxed ${
+                                    readOnlyFontSize === 'sm' ? 'text-xs md:text-sm' :
+                                    readOnlyFontSize === 'base' ? 'text-sm md:text-base' :
+                                    readOnlyFontSize === 'lg' ? 'text-base md:text-lg' : 'text-lg md:text-xl'
+                                  }`}>
+                                    {selectedDoc.documentContent || selectedDoc.documentSubject || 'لا يوجد مضمون مكتوب لهذا الكتاب'}
+                                  </p>
+                                </div>
                               </div>
                             ) : (
                               /* --- EDITABLE MODE --- */
                               <>
                                 <div className="space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                
-                                  <div className="col-span-1 md:col-span-2 space-y-1.5">
-                                    <span className="text-[10px] text-[#d4af37] block font-black uppercase tracking-wider">الأسماء الواردة في الكتاب (اسم في كل سطر أو مفصولة بفواصل):</span>
-                                    <textarea 
-                                      value={selectedDoc.employeeNames || ''}
-                                      disabled={selectedDoc.status === 'processing'}
-                                      onChange={(e) => handleUpdateField(selectedDoc.id, 'employeeNames', e.target.value)}
-                                      className="w-full bg-[#0d0d0d] border border-[#222] focus:border-[#d4af37] text-xs text-white px-3 py-2 rounded-sm focus:outline-none transition-all min-h-[70px] font-sans"
-                                      placeholder="أدخل الأسماء الموجودة بالكتاب، اسم في كل سطر أو مفصولة بفاصلة لترقيمها عند تصدير إكسل..."
-                                    />
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  
+                                    <div className="col-span-1 md:col-span-2 space-y-1.5">
+                                      <span className="text-[10px] text-[#d4af37] block font-black uppercase tracking-wider">الأسماء الواردة في الكتاب (اسم في كل سطر أو مفصولة بفواصل):</span>
+                                      <textarea 
+                                        value={selectedDoc.employeeNames || ''}
+                                        disabled={selectedDoc.status === 'processing'}
+                                        onChange={(e) => handleUpdateField(selectedDoc.id, 'employeeNames', e.target.value)}
+                                        className="w-full bg-[#0d0d0d] border border-[#222] focus:border-[#d4af37] text-xs text-white px-3 py-2 rounded-sm focus:outline-none transition-all min-h-[70px] font-sans"
+                                        placeholder="أدخل الأسماء الموجودة بالكتاب، اسم في كل سطر أو مفصولة بفاصلة لترقيمها عند تصدير إكسل..."
+                                      />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <span className="text-[10px] text-[#888] block font-black uppercase tracking-wider">رقم الكتاب / القرار:</span>
+                                      <input 
+                                        type="text"
+                                        value={selectedDoc.documentNumber || ''}
+                                        disabled={selectedDoc.status === 'processing'}
+                                        onChange={(e) => handleUpdateField(selectedDoc.id, 'documentNumber', e.target.value)}
+                                        className="w-full bg-transparent border-b border-[#222] focus:border-[#d4af37] text-xs text-white font-mono px-2 py-2 focus:outline-none transition-all"
+                                      />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <span className="text-[10px] text-[#888] block font-black uppercase tracking-wider">تاريخ الكتاب:</span>
+                                      <input 
+                                        type="text"
+                                        value={selectedDoc.documentDate || ''}
+                                        disabled={selectedDoc.status === 'processing'}
+                                        onChange={(e) => handleUpdateField(selectedDoc.id, 'documentDate', e.target.value)}
+                                        className="w-full bg-transparent border-b border-[#222] focus:border-[#d4af37] text-xs text-white font-serif px-2 py-2 focus:outline-none transition-all"
+                                      />
+                                    </div>
+                                    <div className="space-y-1.5 col-span-1 md:col-span-2">
+                                      <span className="text-[10px] text-[#888] block font-black uppercase tracking-wider">جهة الإصدار الرسمية:</span>
+                                      <input 
+                                        type="text"
+                                        value={selectedDoc.issuingAuthority || ''}
+                                        disabled={selectedDoc.status === 'processing'}
+                                        onChange={(e) => handleUpdateField(selectedDoc.id, 'issuingAuthority', e.target.value)}
+                                        className="w-full bg-transparent border-b border-[#222] focus:border-[#d4af37] text-xs text-white px-2 py-2 focus:outline-none transition-all"
+                                      />
+                                    </div>
+                                    <div className="space-y-1.5 col-span-1 md:col-span-2">
+                                      <span className="text-[10px] text-[#888] block font-black uppercase tracking-wider">الجهة الموجه إليها الكتاب:</span>
+                                      <input 
+                                        type="text"
+                                        value={selectedDoc.destinationAuthority || ''}
+                                        disabled={selectedDoc.status === 'processing'}
+                                        onChange={(e) => handleUpdateField(selectedDoc.id, 'destinationAuthority', e.target.value)}
+                                        className="w-full bg-transparent border-b border-[#222] focus:border-[#d4af37] text-xs text-white px-2 py-2 focus:outline-none transition-all"
+                                      />
+                                    </div>
+                                    <div className="space-y-1.5 col-span-1 md:col-span-2">
+                                      <span className="text-[10px] text-[#888] block font-black uppercase tracking-wider">نوع الوثيقة الإدارية:</span>
+                                      <select 
+                                        value={selectedDoc.documentType || 'أخرى'}
+                                        disabled={selectedDoc.status === 'processing'}
+                                        onChange={(e) => handleUpdateField(selectedDoc.id, 'documentType', e.target.value)}
+                                        className="w-full bg-transparent border-b border-[#222] focus:border-[#d4af37] text-xs text-white px-2 py-2 focus:outline-none cursor-pointer transition-all"
+                                      >
+                                        {categories.filter(c => c.type !== 'الكل').map((cat) => (
+                                          <option key={cat.type} value={cat.type}>{cat.type}</option>
+                                        ))}
+                                      </select>
+                                    </div>
                                   </div>
-                                  <div className="space-y-1.5">
-                                    <span className="text-[10px] text-[#888] block font-black uppercase tracking-wider">رقم الكتاب / القرار:</span>
-                                  <input 
-                                    type="text"
-                                    value={selectedDoc.documentNumber || ''}
-                                    disabled={selectedDoc.status === 'processing'}
-                                    onChange={(e) => handleUpdateField(selectedDoc.id, 'documentNumber', e.target.value)}
-                                    className="w-full bg-transparent border-b border-[#222] focus:border-[#d4af37] text-xs text-white font-mono px-2 py-2 focus:outline-none transition-all"
-                                  />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <span className="text-[10px] text-[#888] block font-black uppercase tracking-wider">تاريخ الكتاب:</span>
-                                  <input 
-                                    type="text"
-                                    value={selectedDoc.documentDate || ''}
-                                    disabled={selectedDoc.status === 'processing'}
-                                    onChange={(e) => handleUpdateField(selectedDoc.id, 'documentDate', e.target.value)}
-                                    className="w-full bg-transparent border-b border-[#222] focus:border-[#d4af37] text-xs text-white font-serif px-2 py-2 focus:outline-none transition-all"
-                                  />
-                                </div>
-                                <div className="space-y-1.5 col-span-1 md:col-span-2">
-                                  <span className="text-[10px] text-[#888] block font-black uppercase tracking-wider">جهة الإصدار الرسمية:</span>
-                                  <input 
-                                    type="text"
-                                    value={selectedDoc.issuingAuthority || ''}
-                                    disabled={selectedDoc.status === 'processing'}
-                                    onChange={(e) => handleUpdateField(selectedDoc.id, 'issuingAuthority', e.target.value)}
-                                    className="w-full bg-transparent border-b border-[#222] focus:border-[#d4af37] text-xs text-white px-2 py-2 focus:outline-none transition-all"
-                                  />
-                                </div>
-                                <div className="space-y-1.5 col-span-1 md:col-span-2">
-                                  <span className="text-[10px] text-[#888] block font-black uppercase tracking-wider">الجهة الموجه إليها الكتاب:</span>
-                                  <input 
-                                    type="text"
-                                    value={selectedDoc.destinationAuthority || ''}
-                                    disabled={selectedDoc.status === 'processing'}
-                                    onChange={(e) => handleUpdateField(selectedDoc.id, 'destinationAuthority', e.target.value)}
-                                    className="w-full bg-transparent border-b border-[#222] focus:border-[#d4af37] text-xs text-white px-2 py-2 focus:outline-none transition-all"
-                                  />
-                                </div>
-                                <div className="space-y-1.5 col-span-1 md:col-span-2">
-                                  <span className="text-[10px] text-[#888] block font-black uppercase tracking-wider">نوع الوثيقة الإدارية:</span>
-                                  <select 
-                                    value={selectedDoc.documentType || 'أخرى'}
-                                    disabled={selectedDoc.status === 'processing'}
-                                    onChange={(e) => handleUpdateField(selectedDoc.id, 'documentType', e.target.value)}
-                                    className="w-full bg-transparent border-b border-[#222] focus:border-[#d4af37] text-xs text-white px-2 py-2 focus:outline-none cursor-pointer transition-all"
-                                  >
-                                    {categories.filter(c => c.type !== 'الكل').map((cat) => (
-                                      <option key={cat.type} value={cat.type}>{cat.type}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-                            </div>
 
-                            {/* Custom Fields depending on selection */}
-                            {selectedDoc.documentType === 'عقوبة' && (
+                                {/* Custom Fields depending on selection */}
+                                {selectedDoc.documentType === 'عقوبة' && (
                               <div className="pt-5 border-t border-[#1c1c1c] space-y-3.5">
                                 <span className="text-[10px] font-black text-[#d4af37] block uppercase tracking-wider">تفاصيل عقوبة كتاب الأمر الإداري:</span>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -5301,29 +5158,31 @@ ${text}`;
                                 </div>
                               )}
                             </div>
+                                  
+                                  {/* Full Text Content Editing (Always at the very bottom of editable mode) */}
+                                  <div className="pt-5 border-t border-[#1c1c1c] space-y-1.5">
+                                    <span className="text-[10px] text-[#d4af37] block font-black uppercase tracking-wider">تفاصيل وثيقة الأرشفة / مضمون الكتاب (تصميم حر بدون حدود أو صناديق مقيدة):</span>
+                                    <textarea 
+                                      value={selectedDoc.documentContent || selectedDoc.documentSubject || ''}
+                                      disabled={selectedDoc.status === 'processing'}
+                                      ref={(el) => {
+                                        if (el) {
+                                          el.style.height = 'auto';
+                                          el.style.height = `${Math.max(el.scrollHeight, 550)}px`;
+                                        }
+                                      }}
+                                      onChange={(e) => {
+                                        handleUpdateField(selectedDoc.id, 'documentContent', e.target.value);
+                                        e.target.style.height = 'auto';
+                                        e.target.style.height = `${Math.max(e.target.scrollHeight, 550)}px`;
+                                      }}
+                                      className="w-full text-sm bg-transparent border-0 border-r-2 border-[#d4af37]/40 focus:border-[#d4af37] py-3 px-4 text-white leading-relaxed focus:outline-none focus:ring-0 resize-none overflow-hidden transition-all min-h-[550px] shadow-none"
+                                      placeholder="اكتب مضمون وتفاصيل الكتاب بحرية كاملة دون حدود للارتفاع أو خلفية مقيدة..."
+                                    />
+                                  </div>
+                                </div>
                               </>
                             )}
-
-                            <div className="col-span-1 md:col-span-2 space-y-1.5">
-                                  <span className="text-[10px] text-[#d4af37] block font-black uppercase tracking-wider">تفاصيل وثيقة الأرشفة / مضمون الكتاب (تصميم حر بدون حدود أو صناديق مقيدة):</span>
-                                  <textarea 
-                                    value={selectedDoc.documentContent || selectedDoc.documentSubject || ''}
-                                    disabled={selectedDoc.status === 'processing'}
-                                    ref={(el) => {
-                                      if (el) {
-                                        el.style.height = 'auto';
-                                        el.style.height = `${Math.max(el.scrollHeight, 550)}px`;
-                                      }
-                                    }}
-                                    onChange={(e) => {
-                                      handleUpdateField(selectedDoc.id, 'documentContent', e.target.value);
-                                      e.target.style.height = 'auto';
-                                      e.target.style.height = `${Math.max(e.target.scrollHeight, 550)}px`;
-                                    }}
-                                    className="w-full text-sm bg-transparent border-0 border-r-2 border-[#d4af37]/40 focus:border-[#d4af37] py-3 px-4 text-white leading-relaxed focus:outline-none focus:ring-0 resize-none overflow-hidden transition-all min-h-[550px] shadow-none"
-                                    placeholder="اكتب مضمون وتفاصيل الكتاب بحرية كاملة دون حدود للارتفاع أو خلفية مقيدة..."
-                                  />
-                                </div>
 
                             {/* Digital sealing / verification QR Code */}
                             {selectedDoc.status === 'success' && qrCodeUrl && (
@@ -5371,9 +5230,7 @@ ${text}`;
                             </div>
 
                           </div>
-                        </div>
-                      </div>
-                    ) : (
+                        ) : (
                       <div className="text-center py-32 text-[#444] flex flex-col items-center justify-center">
                         <FileText className="w-12 h-12 text-[#222] mb-3" />
                         <p className="text-xs">يرجى تحديد أي وثيقة من القائمة أو جدول الأرشيف الجانبي لتفعيل المفتش الذكي والتعديل والطباعة والتصدير.</p>
