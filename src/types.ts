@@ -55,6 +55,8 @@ export interface DocumentRecord {
   documentDate: string;
   issuingAuthority: string;
   documentSubject: string;
+  destinationAuthority?: string;
+  documentContent?: string;
   confidenceScore: number;
   extractedText: string;
   documentType?: string; // e.g. تقاعد, عقوبة, نقل وإلحاق, التحاق, سحب يد, إجازة سنوية, وفاة, تاريخ انفكاك

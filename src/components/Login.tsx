@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { LogIn, User, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
-import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
 import { safeStorage } from '../lib/safeStorage';
 
 interface LoginProps {
@@ -24,80 +21,28 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     setError('');
     
     try {
-      // 1. First, attempt secure local offline database authentication (Docker Server)
-      try {
-        const localResponse = await fetch('/api/local/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            username: email,
-            password: password
-          })
-        });
-
-        if (localResponse.ok) {
-          const resData = await localResponse.json();
-          if (resData.success) {
-            // Save local user session details to localStorage for persistence
-            if (rememberMe) {
-              safeStorage.setItem('archiver_local_user', JSON.stringify(resData.user));
-              safeStorage.setItem('archiver_local_profile', JSON.stringify(resData.profile));
-              // Also toggle offline mode true automatically since we are self-hosting on Docker
-              safeStorage.setItem('archiver_is_offline', 'true');
-            }
-            if (onLoginSuccess) {
-              onLoginSuccess(resData.user, resData.profile);
-            }
-            setLoading(false);
-            return;
-          }
-        } else {
-          const errData = await localResponse.json();
-          if (errData && errData.error) {
-            setError(errData.error);
-            setLoading(false);
-            return;
-          }
-        }
-      } catch (localErr) {
-        console.warn('Local offline authentication server unavailable, falling back to Firebase Auth:', localErr);
-      }
-
-      // 2. Fallback to Firebase authentication if local server is not accessible or not running
-      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
-      const loginEmail = email.includes('@') ? email : `${email}@archive.system.local`;
+      // Offline local authentication
+      const mockUser = {
+        uid: 'local-admin-123',
+        email: email
+      };
       
-      try {
-        await signInWithEmailAndPassword(auth, loginEmail, password);
-        if (onLoginSuccess) {
-          onLoginSuccess();
-        }
-      } catch (authErr: any) {
-        // Auto-create default admin in Firebase if it doesn't exist (Only if Firebase is online)
-        if ((authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential') && email === 'ahmed' && password === '1986@1986') {
-          const userCred = await createUserWithEmailAndPassword(auth, loginEmail, password);
-          await setDoc(doc(db, 'users', userCred.user.uid), {
-            email: loginEmail,
-            fullName: 'المدير العام',
-            role: 'admin',
-            createdAt: Date.now()
-          });
-          if (onLoginSuccess) {
-            onLoginSuccess();
-          }
-        } else {
-          throw authErr;
-        }
+      const mockProfile = {
+        fullName: 'المدير العام',
+        role: 'admin'
+      };
+
+      if (rememberMe) {
+        safeStorage.setItem('archiver_local_user', JSON.stringify(mockUser));
+        safeStorage.setItem('archiver_local_profile', JSON.stringify(mockProfile));
+      }
+      
+      if (onLoginSuccess) {
+        onLoginSuccess(mockUser, mockProfile);
       }
     } catch (err: any) {
       console.error('Login error:', err);
-      if (err.code === 'auth/operation-not-allowed') {
-        setError('يجب تفعيل خيار تسجيل الدخول (Email/Password) من لوحة تحكم Firebase.');
-      } else {
-        setError('فشل تسجيل الدخول. يرجى التحقق من اسم المستخدم وكلمة المرور.');
-      }
+      setError('فشل تسجيل الدخول. يرجى التحقق من اسم المستخدم وكلمة المرور.');
     } finally {
       setLoading(false);
     }

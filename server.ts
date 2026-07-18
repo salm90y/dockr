@@ -364,7 +364,9 @@ app.post("/api/extract", async (req, res) => {
   "documentNumber": "رقم الكتاب فقط (الجزء الأخير بعد علامة المائلة أو الناقص، مثل '١٢٣' أو 'ب')",
   "documentDate": "تاريخ الكتاب كما هو مكتوب هجرياً أو ميلادياً",
   "issuingAuthority": "الجهة التي أصدرت الكتاب",
+  "destinationAuthority": "الجهة الموجه إليها الكتاب (مثل: مديرية شرطة الطاقة / الإدارة / التقاعد)",
   "documentSubject": "موضوع الكتاب الرئيسي أو عنوانه بكلمات بسيطة ومباشرة",
+  "documentContent": "مضمون الكتاب ومحتواه بشكل نقي واضح بدون أخطاء مطبعية أو حروف متقطعة وبدون ترويسات",
   "confidenceScore": 95,
   "documentType": "نوع الوثيقة من القيم التالية حصراً: 'تقاعد', 'عقوبة', 'نقل وإلحاق', 'التحاق', 'سحب يد', 'إجازة سنوية', 'وفاة', 'تاريخ انفكاك', 'أخرى'",
   "references": [
@@ -631,9 +633,17 @@ app.post("/api/extract", async (req, res) => {
                       type: Type.STRING,
                       description: "الجهة التي أصدرت الكتاب (مثال: وزارة التربية، رئاسة الجامعة، مجلس الوزراء، إلخ). ابحث عنها في الترويسة العلوية أو الأختام.",
                     },
+                    destinationAuthority: {
+                      type: Type.STRING,
+                      description: "الجهة الموجه إليها الكتاب (المرسَل إليه) (مثال: مديرية شرطة الطاقة / الإدارة / التقاعد).",
+                    },
                     documentSubject: {
                       type: Type.STRING,
                       description: "موضوع الكتاب الرئيسي أو عنوانه أو ملخص محتواه بكلمات بسيطة ومباشرة.",
+                    },
+                    documentContent: {
+                      type: Type.STRING,
+                      description: "مضمون الكتاب ومحتواه الكامل بشكل نقي وواضح وخالٍ من الأخطاء والترويسات والتوقيعات، فقط متن الكتاب وموضوعه الأساسي.",
                     },
                     confidenceScore: {
                       type: Type.INTEGER,
@@ -702,7 +712,7 @@ app.post("/api/extract", async (req, res) => {
                       description: "تاريخ كتاب وكالة الأمن الاتحادي المشار إليه (إن وجد، وإلا ضع قيمة فارغة).",
                     }
                   },
-                  required: ["documentNumber", "documentDate", "issuingAuthority", "documentSubject", "confidenceScore", "extractedText", "documentType", "references"],
+                  required: ["documentNumber", "documentDate", "issuingAuthority", "destinationAuthority", "documentSubject", "documentContent", "confidenceScore", "extractedText", "documentType", "references"],
                 },
               },
             });

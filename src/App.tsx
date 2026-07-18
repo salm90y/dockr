@@ -60,9 +60,9 @@ import {
 import { DocumentRecord, ExtractionStats, UserProfile } from './types';
 import { generateSampleDocument } from './sampleGenerator';
 import { DocumentAnnotator } from './components/DocumentAnnotator';
-import { collection, doc, setDoc, deleteDoc, updateDoc, onSnapshot, getDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, auth } from './lib/firebase';
-import { onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { collection, doc, setDoc, deleteDoc, updateDoc, onSnapshot, getDoc } from './lib/mockFirebase';
+import { db, handleFirestoreError, OperationType, auth } from './lib/mockFirebase';
+import { onAuthStateChanged, User, signOut } from './lib/mockFirebase';
 import { Login } from './components/Login';
 import { AdminDashboard } from './components/AdminDashboard';
 import { safeStorage } from './lib/safeStorage';
@@ -315,10 +315,10 @@ function rejoinArabicLetters(text: string): string {
 }
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<User | null>({ uid: 'local', email: 'admin@local' } as any);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>({ fullName: 'المدير العام', role: 'admin' } as any);
   const isAdminUser = userProfile?.role === 'admin' || user?.email === 'ahmed1986y5@gmail.com';
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   useEffect(() => {
@@ -435,9 +435,7 @@ export default function App() {
 
 function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { user: User, userProfile: UserProfile | null, isAdminUser: boolean, onLogout: () => void, onOpenAdmin: () => void }) {
   // Offline Mode & Local Heuristics / Ollama AI Configuration States
-  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(() => {
-    return safeStorage.getItem('archiver_is_offline') === 'true';
-  });
+  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(true);
   const [useOllama, setUseOllama] = useState<boolean>(() => {
     return safeStorage.getItem('archiver_use_ollama') === 'true';
   });
@@ -967,7 +965,9 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
         documentNumber: docNum,
         documentType: docType,
         documentSubject: docSub,
-        issuingAuthority: issuingAuth
+        issuingAuthority: issuingAuth,
+        destinationAuthority: "",
+        documentContent: ""
       };
     };
 
@@ -1054,6 +1054,27 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
       }
     }
 
+    // 4b. Extract Destination Authority
+    let destinationAuthority = "";
+    const destRegexes = [
+      /(?:إلى|الى)\s*[\/\\]?\s*([^\n]+)/i,
+      /الجهة الموجه إليها\s*[:：\-=\s]*([^\n]+)/i
+    ];
+    for (const r of destRegexes) {
+      const match = cleanText.match(r);
+      if (match && match[1]) {
+        destinationAuthority = match[1].trim();
+        break;
+      }
+    }
+
+    // 4c. Basic Document Content (just use the cleanText minus standard headers)
+    let documentContent = cleanText;
+    const contentStartMatch = cleanText.match(/(?:الموضوع|م\/)[^\n]*\n([\s\S]*)/i);
+    if (contentStartMatch && contentStartMatch[1]) {
+      documentContent = contentStartMatch[1].trim();
+    }
+
     // 5. Classify Document Type
     let documentType = "أخرى";
     const typeKeywords: Record<string, string[]> = {
@@ -1132,7 +1153,9 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
       documentNumber,
       documentDate,
       issuingAuthority,
+      destinationAuthority,
       documentSubject,
+      documentContent,
       confidenceScore: 80,
       extractedText: cleanText,
       documentType,
@@ -2241,7 +2264,9 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
   "documentNumber": "رقم الكتاب فقط (الجزء الأخير بعد علامة المائلة أو الناقص، مثل '١٢٣' أو 'ب')",
   "documentDate": "تاريخ الكتاب كما هو مكتوب هجرياً أو ميلادياً",
   "issuingAuthority": "الجهة التي أصدرت الكتاب",
+  "destinationAuthority": "الجهة الموجه إليها الكتاب (مثل: مديرية شرطة الطاقة / الإدارة / التقاعد)",
   "documentSubject": "موضوع الكتاب الرئيسي أو عنوانه بكلمات بسيطة ومباشرة",
+  "documentContent": "مضمون الكتاب ومحتواه بشكل نقي واضح بدون أخطاء مطبعية أو حروف متقطعة وبدون ترويسات",
   "confidenceScore": 95,
   "documentType": "نوع الوثيقة من القيم التالية حصراً: 'تقاعد', 'عقوبة', 'نقل وإلحاق', 'التحاق', 'سحب يد', 'إجازة سنوية', 'وفاة', 'تاريخ انفكاك', 'أخرى'",
   "references": [
@@ -2370,7 +2395,9 @@ ${text}`;
               documentNumber: data.documentNumber || '',
               documentDate: data.documentDate || '',
               issuingAuthority: data.issuingAuthority || '',
+              destinationAuthority: data.destinationAuthority || '',
               documentSubject: data.documentSubject || '',
+              documentContent: data.documentContent || '',
               confidenceScore: data.confidenceScore || 85,
               extractedText: data.extractedText || text,
               documentType: data.documentType || 'أخرى',
@@ -2387,7 +2414,9 @@ ${text}`;
               documentNumber: parsed.documentNumber || '',
               documentDate: parsed.documentDate || '',
               issuingAuthority: parsed.issuingAuthority || '',
+              destinationAuthority: parsed.destinationAuthority || '',
               documentSubject: parsed.documentSubject || '',
+              documentContent: parsed.documentContent || '',
               confidenceScore: 80,
               extractedText: text,
               documentType: parsed.documentType || 'أخرى',
@@ -2404,7 +2433,9 @@ ${text}`;
             documentNumber: parsed.documentNumber || '',
             documentDate: parsed.documentDate || '',
             issuingAuthority: parsed.issuingAuthority || '',
+            destinationAuthority: parsed.destinationAuthority || '',
             documentSubject: parsed.documentSubject || '',
+            documentContent: parsed.documentContent || '',
             confidenceScore: 80,
             extractedText: text,
             documentType: parsed.documentType || 'أخرى',
@@ -2516,7 +2547,9 @@ ${text}`;
         documentNumber: data.documentNumber || '',
         documentDate: data.documentDate || '',
         issuingAuthority: data.issuingAuthority || '',
+        destinationAuthority: data.destinationAuthority || '',
         documentSubject: data.documentSubject || '',
+        documentContent: data.documentContent || '',
         confidenceScore: data.confidenceScore || 90,
         extractedText: data.extractedText || '',
         documentType: data.documentType || 'أخرى',
@@ -3370,29 +3403,29 @@ ${text}`;
 
               <div className="h-4 w-px bg-[#333] mx-1"></div>
 
-              {/* Offline Mode Header Toggle */}
-              <button
-                onClick={() => {
-                  const targetState = !isOfflineMode;
-                  setIsOfflineMode(targetState);
-                  showToast(
-                    'info',
-                    targetState ? 'تفعيل النمط المحلي (أوفلاين)' : 'تغيير نمط العمل',
-                    targetState 
-                      ? 'تم تفعيل وضع الأوفلاين بالكامل. سيتم قراءة وحفظ التحديثات محلياً على المتصفح والملقم الفرعي.'
-                      : 'تم التحول للعمل عبر السحابة والربط التلقائي بقاعدة البيانات السحابية.' 
-                  );
-                }}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 border rounded-sm text-[11px] font-semibold transition-all cursor-pointer group ${
-                  isOfflineMode 
-                    ? 'bg-amber-950/20 text-amber-400 border-amber-500/30 hover:bg-amber-900/30' 
-                    : 'bg-emerald-950/20 text-emerald-400 border-emerald-500/20 hover:bg-emerald-900/30'
-                }`}
-                title={isOfflineMode ? "العمل أوفلاين نشط - اضغط للتحويل للسحابة" : "العمل متصل بالسحابة - اضغط للتحويل للأوفلاين"}
-              >
-                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${isOfflineMode ? 'bg-amber-400' : 'bg-emerald-400'}`}></div>
-                <span>{isOfflineMode ? 'وضع الأوفلاين (محلي)' : 'متصل بالسحابة'}</span>
-              </button>
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
 
               <div className="h-4 w-px bg-[#333] mx-1"></div>
 
@@ -4890,13 +4923,13 @@ ${text}`;
                                 {/* Doc Subject/Title */}
                                 <div className="bg-[#12110c] border border-[#2b2516]/40 rounded-sm p-5 md:p-6 shadow-sm relative overflow-hidden">
                                   <div className="absolute top-0 left-0 w-32 h-32 bg-gradient-to-br from-[#d4af37]/5 to-transparent pointer-events-none"></div>
-                                  <span className="text-[10px] text-[#d4af37] block font-black uppercase tracking-wider mb-2">مضمون وموضوع الكتاب الإداري:</span>
+                                  <span className="text-[10px] text-[#d4af37] block font-black uppercase tracking-wider mb-2">مضمون ومحتوى الكتاب:</span>
                                   <p className={`text-white whitespace-pre-wrap leading-relaxed ${
                                     readOnlyFontSize === 'sm' ? 'text-xs md:text-sm' :
                                     readOnlyFontSize === 'base' ? 'text-sm md:text-base' :
                                     readOnlyFontSize === 'lg' ? 'text-base md:text-lg' : 'text-lg md:text-xl'
                                   }`}>
-                                    {selectedDoc.documentSubject || 'لا يوجد مضمون مكتوب'}
+                                    {selectedDoc.documentContent || selectedDoc.documentSubject || 'لا يوجد مضمون مكتوب'}
                                   </p>
                                 </div>
 
@@ -4950,6 +4983,12 @@ ${text}`;
                                     <span className="text-[9px] text-[#666] font-bold block mb-1">جهة الإصدار الرسمية:</span>
                                     <span className="text-xs md:text-sm font-bold text-[#e5e5e5]">
                                       {selectedDoc.issuingAuthority || 'غير مستخلص'}
+                                    </span>
+                                  </div>
+                                  <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-3.5 flex flex-col justify-between">
+                                    <span className="text-[9px] text-[#666] font-bold block mb-1">الجهة الموجه إليها الكتاب:</span>
+                                    <span className="text-xs md:text-sm font-bold text-[#e5e5e5]">
+                                      {selectedDoc.destinationAuthority || 'غير مستخلص'}
                                     </span>
                                   </div>
                                   <div className="bg-[#0a0a0a] border border-[#161616] rounded-sm p-3.5 flex flex-col justify-between">
@@ -5018,72 +5057,7 @@ ${text}`;
                                 </div>
 
                                 {/* OCR Full Text Comfort Display */}
-                                {selectedDoc.extractedText ? (
-                                  <div className="space-y-2 pt-2">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[10px] text-[#888] font-black uppercase tracking-wider flex items-center gap-1">
-                                        <FileText className="w-3.5 h-3.5 text-[#d4af37]" />
-                                        النص الكامل المستخلص من الماسح (OCR):
-                                      </span>
-                                      <div className="flex items-center gap-2">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            if (confirm('هل ترغب بإعادة تشغيل محرك الاستخلاص المحلي (أوفلاين) على هذا النص وتحديث الحقول تلقائياً؟')) {
-                                              const parsed = parseArabicDocumentOffline(selectedDoc.extractedText, selectedDoc.fileName);
-                                              setDocuments(prev => prev.map(doc => {
-                                                if (doc.id === selectedDoc.id) {
-                                                  return {
-                                                    ...doc,
-                                                    documentNumber: parsed.documentNumber || doc.documentNumber,
-                                                    documentDate: parsed.documentDate || doc.documentDate,
-                                                    issuingAuthority: parsed.issuingAuthority || doc.issuingAuthority,
-                                                    documentSubject: parsed.documentSubject || doc.documentSubject,
-                                                    documentType: parsed.documentType || doc.documentType,
-                                                    penaltyType: parsed.penaltyType || doc.penaltyType,
-                                                    legalArticle: parsed.legalArticle || doc.legalArticle,
-                                                    penaltyReason: parsed.penaltyReason || doc.penaltyReason,
-                                                    penaltyDuration: parsed.penaltyDuration || doc.penaltyDuration,
-                                                    references: parsed.references && parsed.references.length > 0 ? parsed.references : doc.references,
-                                                    hrLetterNumber: parsed.hrLetterNumber || doc.hrLetterNumber,
-                                                    securityLetterNumber: parsed.securityLetterNumber || doc.securityLetterNumber
-                                                  };
-                                                }
-                                                return doc;
-                                              }));
-                                              alert('تمت إعادة الاستخلاص وتحديث الحقول بنجاح!');
-                                            }
-                                          }}
-                                          className="text-[10px] text-amber-400 hover:underline flex items-center gap-1 font-bold cursor-pointer bg-transparent border-none"
-                                          title="تشغيل محرك الاستخلاص المحلي على النص الحالي"
-                                        >
-                                          <span>💡 إعادة استخلاص البيانات أوفلاين</span>
-                                        </button>
-                                        <span className="text-gray-800">|</span>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            if (selectedDoc.extractedText) {
-                                              navigator.clipboard.writeText(selectedDoc.extractedText);
-                                              alert('تم نسخ النص الكامل بنجاح!');
-                                            }
-                                          }}
-                                          className="text-[10px] text-emerald-400 hover:underline flex items-center gap-1 font-bold cursor-pointer bg-transparent border-none"
-                                        >
-                                          <Copy className="w-3 h-3" />
-                                          <span>نسخ النص الكامل</span>
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div className={`w-full bg-[#111] border border-[#1c1c1c] text-[#ccc] p-5 rounded-sm font-mono leading-relaxed whitespace-pre-wrap select-text max-h-[350px] overflow-y-auto custom-scrollbar ${
-                                      readOnlyFontSize === 'sm' ? 'text-[11px]' :
-                                      readOnlyFontSize === 'base' ? 'text-xs' :
-                                      readOnlyFontSize === 'lg' ? 'text-sm' : 'text-base'
-                                    }`}>
-                                      {selectedDoc.extractedText}
-                                    </div>
-                                  </div>
-                                ) : (
+                                {selectedDoc.extractedText ? null : (
                                   <div className="space-y-3 p-4 bg-amber-500/5 border border-dashed border-amber-500/20 rounded-sm mt-2 text-right direction-rtl">
                                     <div className="flex items-center gap-1.5 text-amber-400 font-bold text-[11px]">
                                       <Lightbulb className="w-4 h-4 text-amber-400 animate-pulse" />
@@ -5107,7 +5081,9 @@ ${text}`;
                                                 documentNumber: parsed.documentNumber || doc.documentNumber,
                                                 documentDate: parsed.documentDate || doc.documentDate,
                                                 issuingAuthority: parsed.issuingAuthority || doc.issuingAuthority,
+                                                destinationAuthority: parsed.destinationAuthority || doc.destinationAuthority,
                                                 documentSubject: parsed.documentSubject || doc.documentSubject,
+                                                documentContent: parsed.documentContent || doc.documentContent,
                                                 documentType: parsed.documentType || doc.documentType,
                                                 penaltyType: parsed.penaltyType || doc.penaltyType,
                                                 legalArticle: parsed.legalArticle || doc.legalArticle,
@@ -5135,7 +5111,7 @@ ${text}`;
                                 <div className="col-span-1 md:col-span-2 space-y-1.5">
                                   <span className="text-[10px] text-[#d4af37] block font-black uppercase tracking-wider">تفاصيل وثيقة الأرشفة / مضمون الكتاب (تصميم حر بدون حدود أو صناديق مقيدة):</span>
                                   <textarea 
-                                    value={selectedDoc.documentSubject || ''}
+                                    value={selectedDoc.documentContent || selectedDoc.documentSubject || ''}
                                     disabled={selectedDoc.status === 'processing'}
                                     ref={(el) => {
                                       if (el) {
@@ -5144,7 +5120,7 @@ ${text}`;
                                       }
                                     }}
                                     onChange={(e) => {
-                                      handleUpdateField(selectedDoc.id, 'documentSubject', e.target.value);
+                                      handleUpdateField(selectedDoc.id, 'documentContent', e.target.value);
                                       e.target.style.height = 'auto';
                                       e.target.style.height = `${Math.max(e.target.scrollHeight, 550)}px`;
                                     }}
@@ -5189,6 +5165,16 @@ ${text}`;
                                     value={selectedDoc.issuingAuthority || ''}
                                     disabled={selectedDoc.status === 'processing'}
                                     onChange={(e) => handleUpdateField(selectedDoc.id, 'issuingAuthority', e.target.value)}
+                                    className="w-full bg-transparent border-b border-[#222] focus:border-[#d4af37] text-xs text-white px-2 py-2 focus:outline-none transition-all"
+                                  />
+                                </div>
+                                <div className="space-y-1.5 col-span-1 md:col-span-2">
+                                  <span className="text-[10px] text-[#888] block font-black uppercase tracking-wider">الجهة الموجه إليها الكتاب:</span>
+                                  <input 
+                                    type="text"
+                                    value={selectedDoc.destinationAuthority || ''}
+                                    disabled={selectedDoc.status === 'processing'}
+                                    onChange={(e) => handleUpdateField(selectedDoc.id, 'destinationAuthority', e.target.value)}
                                     className="w-full bg-transparent border-b border-[#222] focus:border-[#d4af37] text-xs text-white px-2 py-2 focus:outline-none transition-all"
                                   />
                                 </div>
@@ -5332,16 +5318,6 @@ ${text}`;
                                 </div>
                               )}
                             </div>
-
-                            {/* OCR full text read-only viewer */}
-                            {selectedDoc.extractedText && (
-                              <div className="space-y-2 pt-5 border-t border-[#1c1c1c]">
-                                <span className="text-[10px] text-[#888] font-black uppercase tracking-wider block">النص الكامل المستخلص من الماسح (OCR):</span>
-                                <div className="w-full bg-transparent border-none text-[#ccc] p-1 text-xs font-mono leading-relaxed whitespace-pre-wrap selection:bg-[#d4af37]/30">
-                                  {selectedDoc.extractedText}
-                                </div>
-                              </div>
-                            )}
                               </>
                             )}
 
@@ -6539,19 +6515,18 @@ ${text}`;
                             <Lightbulb className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
                             تهيئة المعالجة دون اتصال (أوفلاين):
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => setIsOfflineMode(prev => !prev)}
-                            className={`px-2 py-0.5 rounded text-[9px] font-bold border transition-all cursor-pointer ${
-                              isOfflineMode
-                                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.15)]'
-                                : 'bg-[#141414] border-gray-800 text-gray-400 hover:border-amber-500/30 hover:text-amber-400'
-                            }`}
-                          >
-                            {isOfflineMode ? 'وضع الأوفلاين نشط' : 'الاتصال السحابي'}
-                          </button>
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
                         </div>
-
+ 
                         <p className="text-[9px] text-gray-500 leading-relaxed font-sans">
                           عند تفعيل وضع الأوفلاين، سيتم تعطيل الاتصال السحابي بقواعد بيانات فيربيس (لتجنب التوقف)، وسيتم حفظ البيانات محلياً في المتصفح مع تفعيل محرك القواعد والاستخلاص المحلي، أو الاتصال بنموذج Ollama الذكي على ملقم محلي.
                         </p>
