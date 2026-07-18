@@ -2189,7 +2189,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
         
         const ocrResult = await Tesseract.recognize(
           dataUrl,
-          'ara',
+          'ara+eng',
           {
             logger: (m: any) => {
               console.log("OCR Progress:", m);
@@ -2268,25 +2268,46 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
 النص المستخلص من القارئ الضوئي (OCR) والذي قد يحتوي على حروف متقطعة أو أخطاء:
 ${text}`;
 
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
-
-            const localOllamaResponse = await fetch(`${targetUrl}/api/generate`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: ollamaModel || "qwen2.5:7b",
-                prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
-                stream: false,
-                format: "json",
-                options: {
-                  temperature: 0.1
-                }
-              }),
-              signal: controller.signal
-            });
+            const rawBase64 = base64Data && base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
             
-            clearTimeout(timeoutId);
+            const attemptOllamaReq = async (useImage: boolean, timeout: number) => {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), timeout);
+              try {
+                const res = await fetch(`${targetUrl}/api/generate`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    model: ollamaModel || "qwen2.5:7b",
+                    prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
+                    stream: false,
+                    format: "json",
+                    images: useImage && rawBase64 ? [rawBase64] : [],
+                    options: { temperature: 0.1 }
+                  }),
+                  signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                return res;
+              } catch (err) {
+                clearTimeout(timeoutId);
+                throw err;
+              }
+            };
+
+            let localOllamaResponse;
+            try {
+              // 1st Try: Multimodal with image
+              localOllamaResponse = await attemptOllamaReq(true, 40000); // 40s timeout for multimodal
+              if (!localOllamaResponse.ok) {
+                throw new Error("Multimodal rejected");
+              }
+              console.log("Ollama Multimodal success");
+            } catch (err1) {
+              console.log("Ollama Multimodal failed or rejected, retrying text-only:", err1);
+              // 2nd Try: Text only
+              localOllamaResponse = await attemptOllamaReq(false, 40000); // 40s timeout for text
+            }
 
             if (localOllamaResponse.ok) {
               const resJson = await localOllamaResponse.json();
@@ -5952,21 +5973,32 @@ ${text}`;
                       <strong className="text-gray-300 block">خطوات سحب وتفعيل الموديل العربي الذكي بشكل صحيح:</strong>
                       <ol className="list-decimal list-inside space-y-1 text-gray-400 pl-2">
                         <li>
-                          افتح الـ PowerShell على حاسبتك واكتب الأمر التالي للولوج إلى داخل حاوية دوكر وسحب الموديل العربي (Qwen 2.5):
+                          افتح الـ PowerShell واكتب الأمر التالي لسحب موديل متقدم يدعم الصور (Vision) لضمان دقة القراءة المباشرة دون الاعتماد على القارئ الضوئي الضعيف:
                           <div className="bg-black text-[#85e89d] p-2 rounded font-mono text-left direction-ltr text-[10px] my-1.5 overflow-x-auto select-all">
-                            docker exec -it ollama ollama run qwen2.5:7b
+                            docker exec -it ollama ollama run llama3.2-vision
                           </div>
+                          <span className="text-[10px] text-amber-500/80 block mt-1">ملاحظة: الموديلات النصية العادية (مثل qwen2.5:7b) لا ترى الصور، وتعتمد على القارئ الضوئي المحلي (Tesseract) الذي غالباً ما يخطئ في اللغة العربية ويولد نصوصاً غير مفهومة.</span>
                         </li>
                         <li>
-                          إذا لم تقم بتشغيل الحاوية بعد، يمكنك تشغيل Ollama على Docker بأمر واحد يفتح المنفذ الخارجي للمتصفح:
+                          إذا لم تقم بتشغيل الحاوية بعد، يمكنك تشغيل Ollama على Docker بأمر واحد يفتح المنفذ الخارجي:
                           <div className="bg-black text-[#79b8ff] p-2 rounded font-mono text-left direction-ltr text-[10px] my-1.5 overflow-x-auto select-all">
                             docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
                           </div>
                         </li>
                         <li>
-                          تأكد من كتابة اسم الموديل بالضبط <code className="text-[#d4af37] font-mono bg-black px-1 rounded">qwen2.5:7b</code> (أو الموديل الذي قمت بسحبه) في الإعدادات أدناه لتوجيه المحلل لاستخدامه.
+                          تأكد من كتابة اسم الموديل بالضبط <code className="text-[#d4af37] font-mono bg-black px-1 rounded">llama3.2-vision</code> في الإعدادات أدناه لتوجيه المحلل لاستخدامه.
                         </li>
                       </ol>
+                    </div>
+
+                    <div className="mt-3 p-2 bg-red-950/30 border border-red-900/50 rounded">
+                      <strong className="text-red-400 block text-xs mb-1">حل مشكلة "network is unreachable" (لا يوجد اتصال إنترنت في دوكر):</strong>
+                      <p className="text-[10px] text-gray-300 mb-2">
+                        إذا ظهر لك خطأ يخبرك بأن الشبكة غير متصلة عند محاولة تحميل الموديل داخل دوكر، فهذا يعني أن حاوية دوكر ليس لديها صلاحية الوصول للإنترنت من حاسبتك.
+                      </p>
+                      <p className="text-[10px] text-gray-300">
+                        <strong>الحل الأسهل والأسرع:</strong> لا تستخدم دوكر. قم بتحميل برنامج Ollama مباشرة للويندوز من موقعهم الرسمي <a href="https://ollama.com/download/windows" target="_blank" rel="noreferrer" className="text-blue-400 underline">ollama.com</a>. بعد تثبيته، افتح موجه الأوامر (CMD) العادي واكتب: <code className="text-[#85e89d] font-mono bg-black px-1 rounded">ollama run llama3.2-vision</code>
+                      </p>
                     </div>
                   </div>
 
@@ -6008,10 +6040,10 @@ ${text}`;
                             type="text"
                             value={ollamaModel}
                             onChange={(e) => setOllamaModel(e.target.value)}
-                            placeholder="qwen2.5:7b"
+                            placeholder="llama3.2-vision"
                             className="w-full bg-[#050608] border border-gray-800 text-xs text-white rounded px-3 py-2.5 focus:outline-none focus:border-amber-500 font-mono text-left direction-ltr"
                           />
-                          <span className="text-[9px] text-gray-500 block">مثال: <code className="font-mono text-gray-400">qwen2.5:7b</code> أو <code className="font-mono text-gray-400">llama3</code> أو <code className="font-mono text-gray-400">mistral</code></span>
+                          <span className="text-[9px] text-gray-500 block">مثال: <code className="font-mono text-gray-400">llama3.2-vision</code> أو <code className="font-mono text-gray-400">minicpm-v</code> أو <code className="font-mono text-gray-400">qwen2.5:7b</code></span>
                         </div>
                       </div>
                     )}
