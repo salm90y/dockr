@@ -247,11 +247,19 @@ function rejoinArabicLetters(text: string): string {
   // to their standard nominal Arabic characters so they can connect correctly in browser.
   let normalized = text.normalize('NFKC');
 
-  // 2. Fix spaced-out Arabic letters (e.g., "ج م ه و ر ي ة" -> "جمهورية")
-  // We process line by line to preserve formatting and layout where possible.
+  // 2. Remove any zero-width characters (ZWNJ, ZWJ, ZWSP, BOM) that cause browsers to render connected letters as disconnected
+  normalized = normalized.replace(/[\u200B-\u200D\uFEFF]/g, '');
+
+  // 3. Process line by line to preserve formatting and layout where possible.
   const lines = normalized.split('\n');
   const processedLines = lines.map(line => {
-    const tokens = line.split(/\s+/).filter(t => t.length > 0);
+    if (!line.trim()) return line;
+    if (!/[\u0600-\u06FF]/.test(line)) return line;
+
+    // Replace multiple spaces (2 or more) with a placeholder to keep word boundaries
+    let tempLine = line.replace(/\s{2,}/g, ' ___WORD_BREAK___ ');
+
+    const tokens = tempLine.split(/\s+/).filter(t => t.length > 0);
     if (tokens.length === 0) return line;
 
     // Check if the majority of Arabic tokens in this line are single characters.
@@ -260,8 +268,8 @@ function rejoinArabicLetters(text: string): string {
       const singleLetterCount = arabicTokens.filter(t => t.length === 1).length;
       const ratio = singleLetterCount / arabicTokens.length;
       
-      // If more than 60% of the Arabic tokens are single letters, it's a spaced-out OCR line.
-      if (ratio > 0.6) {
+      // If more than 50% of the Arabic tokens are single letters, it's a spaced-out OCR line.
+      if (ratio > 0.5) {
         let newLine = "";
         for (let i = 0; i < tokens.length; i++) {
           const current = tokens[i];
@@ -276,25 +284,29 @@ function rejoinArabicLetters(text: string): string {
             // If both are single Arabic characters, do NOT put a space between them (join them).
             if (isCurrentArabicChar && isNextArabicChar) {
               // Join directly without space
+            } else if (current === '___WORD_BREAK___' || next === '___WORD_BREAK___') {
+              // Word break will be handled by replace later
             } else {
               newLine += " ";
             }
           }
         }
-        return newLine;
+        tempLine = newLine;
       }
     }
     
     // Fallback: simple recursive replacement of isolated letter spacing.
     let prevLine;
-    let tempLine = line;
     do {
       prevLine = tempLine;
       // Match a single Arabic char, followed by one or more spaces, followed by another single Arabic char,
       // where the second is at the end or followed by a space, and the first is at the start or preceded by a space.
-      // This is safe and targets only disconnected letter segments.
       tempLine = tempLine.replace(/(?<=^|\s)([\u0600-\u06FF])\s+([\u0600-\u06FF])(?=\s|$)/g, '$1$2');
     } while (tempLine !== prevLine);
+
+    // Restore the word boundaries and remove double spacing
+    tempLine = tempLine.replace(/___WORD_BREAK___/g, ' ');
+    tempLine = tempLine.replace(/\s+/g, ' ').trim();
 
     return tempLine;
   });
@@ -2214,22 +2226,124 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
         let finalUpdates: any = {};
 
         if (useOllama) {
-          const response = await fetch('/api/extract', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              imageBase64: base64Data,
-              mimeType,
-              fileName,
-              useOllama: true,
-              ollamaUrl,
-              ollamaModel,
-              extractedTextFallback: text
-            })
-          });
+          let data: any = null;
+          let ollamaErr: any = null;
 
-          if (response.ok) {
-            const data = await response.json();
+          // 1. Try connecting directly to local Ollama from the browser (since the browser runs on the user's local PC, it has direct access to localhost!)
+          try {
+            console.log("Attempting direct browser-to-local-Ollama extraction at:", ollamaUrl);
+            const targetUrl = (ollamaUrl || 'http://localhost:11434').replace(/\/$/, "");
+            
+            const systemPrompt = `أنت نظام ذكي متخصص في تحليل واستخراج البيانات من الكتب الإدارية والوثائق الرسمية باللغة العربية.
+مهمتك هي تصحيح أي أخطاء في القراءة الآلية (مثل الحروف المتقطعة والمتباعدة والكلمات المكررة) واستخراج البيانات بصيغة JSON مطابقة تماماً للمواصفات التالية:
+{
+  "documentNumber": "رقم الكتاب فقط (الجزء الأخير بعد علامة المائلة أو الناقص، مثل '١٢٣' أو 'ب')",
+  "documentDate": "تاريخ الكتاب كما هو مكتوب هجرياً أو ميلادياً",
+  "issuingAuthority": "الجهة التي أصدرت الكتاب",
+  "documentSubject": "موضوع الكتاب الرئيسي أو عنوانه بكلمات بسيطة ومباشرة",
+  "confidenceScore": 95,
+  "documentType": "نوع الوثيقة من القيم التالية حصراً: 'تقاعد', 'عقوبة', 'نقل وإلحاق', 'التحاق', 'سحب يد', 'إجازة سنوية', 'وفاة', 'تاريخ انفكاك', 'أخرى'",
+  "references": [
+    {
+      "referenceNumber": "رقم الكتاب المشار إليه",
+      "referenceDate": "تاريخ الكتاب المشار إليه",
+      "referenceAuthority": "جهة إصدار الكتاب المشار إليه"
+    }
+  ],
+  "penaltyType": "نوع العقوبة إذا كان الكتاب عقوبة (لفت نظر، إنذار، توبيخ، إلخ)",
+  "legalArticle": "المادة القانونية المستند عليها إن وجدت",
+  "penaltyReason": "سبب العقوبة إن وجد",
+  "penaltyDuration": "مدة العقوبة إن وجدت",
+  "hrLetterNumber": "رقم كتاب الموارد البشرية إن وجد",
+  "hrLetterDate": "تاريخ كتاب الموارد البشرية إن وجد",
+  "securityLetterNumber": "رقم كتاب وكالة الأمن الاتحادي إن وجد",
+  "securityLetterDate": "تاريخ كتاب وكالة الأمن الاتحادي إن وجد",
+  "extractedText": "النص الكامل المستخلص والمصحح لغوياً مع دمج الحروف المتقطعة وإصلاح المسافات الزائدة"
+}
+تنبيه هام جداً: بالنسبة لجميع أرقام الكتب المستخرجة، يرجى الاقتصار فقط على ذكر الرقم الأخير الذي يأتي بعد علامة الفاصلة المائلة '/' أو الناقص '-' وتجاهل الأجزاء السابقة.
+أجب بصيغة JSON صالحة فقط دون أي نصوص إضافية أو علامات الاقتباس البرمجية.`;
+
+            const promptContent = `اسم الملف الأصلي: ${fileName}
+النص المستخلص من القارئ الضوئي (OCR) والذي قد يحتوي على حروف متقطعة أو أخطاء:
+${text}`;
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
+
+            const localOllamaResponse = await fetch(`${targetUrl}/api/generate`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: ollamaModel || "qwen2.5:7b",
+                prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
+                stream: false,
+                format: "json",
+                options: {
+                  temperature: 0.1
+                }
+              }),
+              signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+
+            if (localOllamaResponse.ok) {
+              const resJson = await localOllamaResponse.json();
+              const responseText = resJson.response || "";
+              let cleanText = responseText.trim();
+              
+              if (cleanText.startsWith("```")) {
+                cleanText = cleanText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+              }
+              cleanText = cleanText.trim();
+
+              try {
+                data = JSON.parse(cleanText);
+                console.log("Direct client-side Ollama extraction succeeded!", data);
+              } catch (parseE) {
+                const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                  data = JSON.parse(jsonMatch[0]);
+                }
+              }
+            } else {
+              throw new Error(`Local Ollama returned status ${localOllamaResponse.status}`);
+            }
+          } catch (err: any) {
+            ollamaErr = err;
+            console.log("Direct client-side Ollama failed or blocked by CORS. Falling back to Server Proxy (/api/extract):", err.message || err);
+          }
+
+          // 2. Fallback to Server Proxy if client-side direct request failed (or if offline server is running)
+          if (!data) {
+            try {
+              const response = await fetch('/api/extract', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  imageBase64: base64Data,
+                  mimeType,
+                  fileName,
+                  useOllama: true,
+                  ollamaUrl,
+                  ollamaModel,
+                  extractedTextFallback: text
+                })
+              });
+
+              if (response.ok) {
+                data = await response.json();
+              } else {
+                throw new Error("Failed server-side proxy parser");
+              }
+            } catch (serverErr: any) {
+              console.error("Server-side Ollama proxy failed:", serverErr.message || serverErr);
+              // Fallback to local offline regex parser
+              showToast('warning', 'Ollama غير متاح', 'لم يتم الاتصال بـ Ollama محلياً أو سحابياً. تم استخدام المحلل التلقائي المحلي البديل.');
+            }
+          }
+
+          if (data) {
             finalUpdates = {
               documentNumber: data.documentNumber || '',
               documentDate: data.documentDate || '',
@@ -2245,7 +2359,22 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
               penaltyDuration: data.penaltyDuration || ''
             };
           } else {
-            throw new Error("Failed to parse via Ollama");
+            // High-quality local heuristic parser fallback
+            const parsed = parseArabicDocumentOffline(text, fileName);
+            finalUpdates = {
+              documentNumber: parsed.documentNumber || '',
+              documentDate: parsed.documentDate || '',
+              issuingAuthority: parsed.issuingAuthority || '',
+              documentSubject: parsed.documentSubject || '',
+              confidenceScore: 80,
+              extractedText: text,
+              documentType: parsed.documentType || 'أخرى',
+              references: parsed.references || [],
+              penaltyType: parsed.penaltyType || '',
+              legalArticle: parsed.legalArticle || '',
+              penaltyReason: parsed.penaltyReason || '',
+              penaltyDuration: parsed.penaltyDuration || ''
+            };
           }
         } else {
           const parsed = parseArabicDocumentOffline(text, fileName);

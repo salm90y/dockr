@@ -45,11 +45,19 @@ function rejoinArabicLetters(text: string): string {
   // to their standard nominal Arabic characters so they can connect correctly in browser.
   let normalized = text.normalize('NFKC');
 
-  // 2. Fix spaced-out Arabic letters (e.g., "ج م ه و ر ي ة" -> "جمهورية")
-  // We process line by line to preserve formatting and layout where possible.
+  // 2. Remove any zero-width characters (ZWNJ, ZWJ, ZWSP, BOM) that cause browsers to render connected letters as disconnected
+  normalized = normalized.replace(/[\u200B-\u200D\uFEFF]/g, '');
+
+  // 3. Process line by line to preserve formatting and layout where possible.
   const lines = normalized.split('\n');
   const processedLines = lines.map(line => {
-    const tokens = line.split(/\s+/).filter(t => t.length > 0);
+    if (!line.trim()) return line;
+    if (!/[\u0600-\u06FF]/.test(line)) return line;
+
+    // Replace multiple spaces (2 or more) with a placeholder to keep word boundaries
+    let tempLine = line.replace(/\s{2,}/g, ' ___WORD_BREAK___ ');
+
+    const tokens = tempLine.split(/\s+/).filter(t => t.length > 0);
     if (tokens.length === 0) return line;
 
     // Check if the majority of Arabic tokens in this line are single characters.
@@ -58,8 +66,8 @@ function rejoinArabicLetters(text: string): string {
       const singleLetterCount = arabicTokens.filter(t => t.length === 1).length;
       const ratio = singleLetterCount / arabicTokens.length;
       
-      // If more than 60% of the Arabic tokens are single letters, it's a spaced-out OCR line.
-      if (ratio > 0.6) {
+      // If more than 50% of the Arabic tokens are single letters, it's a spaced-out OCR line.
+      if (ratio > 0.5) {
         let newLine = "";
         for (let i = 0; i < tokens.length; i++) {
           const current = tokens[i];
@@ -74,24 +82,29 @@ function rejoinArabicLetters(text: string): string {
             // If both are single Arabic characters, do NOT put a space between them (join them).
             if (isCurrentArabicChar && isNextArabicChar) {
               // Join directly without space
+            } else if (current === '___WORD_BREAK___' || next === '___WORD_BREAK___') {
+              // Word break will be handled by replace later
             } else {
               newLine += " ";
             }
           }
         }
-        return newLine;
+        tempLine = newLine;
       }
     }
     
     // Fallback: simple recursive replacement of isolated letter spacing.
     let prevLine;
-    let tempLine = line;
     do {
       prevLine = tempLine;
       // Match a single Arabic char, followed by one or more spaces, followed by another single Arabic char,
       // where the second is at the end or followed by a space, and the first is at the start or preceded by a space.
       tempLine = tempLine.replace(/(?<=^|\s)([\u0600-\u06FF])\s+([\u0600-\u06FF])(?=\s|$)/g, '$1$2');
     } while (tempLine !== prevLine);
+
+    // Restore the word boundaries and remove double spacing
+    tempLine = tempLine.replace(/___WORD_BREAK___/g, ' ');
+    tempLine = tempLine.replace(/\s+/g, ' ').trim();
 
     return tempLine;
   });
@@ -387,9 +400,15 @@ app.post("/api/extract", async (req, res) => {
       urlsToTry.push(targetOllamaUrl.replace("localhost", "172.17.0.1").replace("127.0.0.1", "172.17.0.1"));
     }
 
+    const rawBase64 = imageBase64 && imageBase64.includes(",") 
+      ? imageBase64.split(",")[1] 
+      : imageBase64;
+
     for (const url of urlsToTry) {
       try {
         console.log(`Trying to connect to Ollama at: ${url}/api/generate`);
+        
+        // Try with image first (for multimodal models like LLaVA or Qwen-VL)
         ollamaRes = await fetch(`${url}/api/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -398,7 +417,7 @@ app.post("/api/extract", async (req, res) => {
             prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
             stream: false,
             format: "json",
-            images: imageBase64 ? [imageBase64] : [],
+            images: rawBase64 ? [rawBase64] : [],
             options: {
               temperature: 0.1
             }
@@ -407,12 +426,58 @@ app.post("/api/extract", async (req, res) => {
         });
 
         if (ollamaRes && ollamaRes.ok) {
-          console.log(`Successfully connected to Ollama at: ${url}`);
+          console.log(`Successfully connected to Ollama (multimodal) at: ${url}`);
           break;
+        } else if (ollamaRes) {
+          console.log(`Ollama multimodal request failed on ${url} with status ${ollamaRes.status}. Retrying as text-only...`);
+          // Retry immediately as text-only in case the model is text-only (e.g. qwen2.5:7b, llama3)
+          ollamaRes = await fetch(`${url}/api/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: targetOllamaModel,
+              prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
+              stream: false,
+              format: "json",
+              options: {
+                temperature: 0.1
+              }
+            }),
+            signal: AbortSignal.timeout(10000)
+          });
+          
+          if (ollamaRes && ollamaRes.ok) {
+            console.log(`Successfully connected to Ollama (text-only retry) at: ${url}`);
+            break;
+          }
         }
       } catch (err: any) {
         lastOllamaError = err;
-        console.log(`Ollama failed on ${url}: ${err.message || err}`);
+        console.log(`Ollama multimodal failed on ${url}: ${err.message || err}. Attempting text-only fallback on same URL...`);
+        
+        try {
+          ollamaRes = await fetch(`${url}/api/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: targetOllamaModel,
+              prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
+              stream: false,
+              format: "json",
+              options: {
+                temperature: 0.1
+              }
+            }),
+            signal: AbortSignal.timeout(10000)
+          });
+          
+          if (ollamaRes && ollamaRes.ok) {
+            console.log(`Successfully connected to Ollama (text-only fallback) at: ${url}`);
+            break;
+          }
+        } catch (innerErr: any) {
+          console.log(`Ollama text-only fallback also failed on ${url}: ${innerErr.message || innerErr}`);
+        }
       }
     }
 
