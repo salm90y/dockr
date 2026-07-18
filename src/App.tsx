@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Component } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -166,6 +166,79 @@ export const DEFAULT_CATEGORIES: FolderCategory[] = [
   { type: 'أخرى', label: 'مستندات وكتب رسمية متنوعة', color: 'text-gray-400 bg-gray-500/10 border-gray-500/20' }
 ];
 
+// Robust React Error Boundary to capture and display client-side rendering issues
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: any;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    this.setState({ error, errorInfo });
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div dir="rtl" className="min-h-screen bg-[#050505] text-[#e5e5e5] p-8 flex items-center justify-center font-sans antialiased">
+          <div className="max-w-2xl w-full border border-red-500/30 bg-[#0c0606] p-6 rounded-lg shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-500">
+              <AlertTriangle className="w-8 h-8 shrink-0" />
+              <h1 className="text-xl font-bold">⚠️ عذراً، حدث خطأ غير متوقع في واجهة التطبيق</h1>
+            </div>
+            <p className="text-gray-300 text-sm leading-relaxed">
+              تظهر هذه الشاشة بسبب توقف أحد عناصر الواجهة عن العمل بشكل طبيعي. يرجى تصوير هذه الشاشة وإرسالها إلينا لنتمكن من حل الخلل فوراً:
+            </p>
+            <div className="p-4 bg-black border border-neutral-800 rounded font-mono text-xs text-red-400 overflow-auto max-h-60 text-left" dir="ltr">
+              <p className="font-bold mb-2 text-red-500">Error: {this.state.error?.message}</p>
+              <pre className="whitespace-pre-wrap text-[11px]">{this.state.error?.stack}</pre>
+              {this.state.errorInfo && (
+                <pre className="whitespace-pre-wrap text-[11px] mt-2 text-gray-500">
+                  {JSON.stringify(this.state.errorInfo, null, 2)}
+                </pre>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => {
+                  safeStorage.clear();
+                  window.location.reload();
+                }}
+                className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2 rounded transition-colors cursor-pointer"
+              >
+                مسح التخزين المؤقت وإعادة التشغيل
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-white font-bold text-xs px-4 py-2 rounded transition-colors cursor-pointer"
+              >
+                تحديث الصفحة
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -243,36 +316,46 @@ export default function App() {
   }
 
   if (!user) {
-    return <Login onLoginSuccess={(localUser, localProfile) => {
-      if (localUser && localProfile) {
-        setUser(localUser);
-        setUserProfile(localProfile);
-      }
-    }} />;
+    return (
+      <ErrorBoundary>
+        <Login onLoginSuccess={(localUser, localProfile) => {
+          if (localUser && localProfile) {
+            setUser(localUser);
+            setUserProfile(localProfile);
+          }
+        }} />
+      </ErrorBoundary>
+    );
   }
 
   if (showAdminDashboard && isAdminUser) {
     const isOffline = safeStorage.getItem('archiver_is_offline') === 'true';
     return (
-      <div dir="rtl" className="min-h-screen bg-[#050505] text-[#e5e5e5] font-sans antialiased pb-12">
-        <header className="bg-gradient-to-b from-[#0a0a0a] to-[#040404] border-b border-[#1c1c1c] sticky top-0 z-40 shadow-xl px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-             <h1 className="text-xl font-cairo font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ffffff] via-[#f3df95] to-[#d4af37]">لوحة تحكم المشرف</h1>
-          </div>
-          <button
-            onClick={() => setShowAdminDashboard(false)}
-            className="flex items-center gap-2 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] text-white text-xs font-bold px-4 py-2 rounded-sm transition-all cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            العودة للتطبيق
-          </button>
-        </header>
-        <AdminDashboard isOfflineMode={isOffline} />
-      </div>
+      <ErrorBoundary>
+        <div dir="rtl" className="min-h-screen bg-[#050505] text-[#e5e5e5] font-sans antialiased pb-12">
+          <header className="bg-gradient-to-b from-[#0a0a0a] to-[#040404] border-b border-[#1c1c1c] sticky top-0 z-40 shadow-xl px-4 py-3 flex justify-between items-center">
+            <div className="flex items-center gap-3">
+               <h1 className="text-xl font-cairo font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ffffff] via-[#f3df95] to-[#d4af37]">لوحة تحكم المشرف</h1>
+            </div>
+            <button
+              onClick={() => setShowAdminDashboard(false)}
+              className="flex items-center gap-2 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] text-white text-xs font-bold px-4 py-2 rounded-sm transition-all cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              العودة للتطبيق
+            </button>
+          </header>
+          <AdminDashboard isOfflineMode={isOffline} />
+        </div>
+      </ErrorBoundary>
     );
   }
 
-  return <MainApp user={user} userProfile={userProfile} isAdminUser={isAdminUser} onLogout={handleLogout} onOpenAdmin={() => setShowAdminDashboard(true)} />;
+  return (
+    <ErrorBoundary>
+      <MainApp user={user} userProfile={userProfile} isAdminUser={isAdminUser} onLogout={handleLogout} onOpenAdmin={() => setShowAdminDashboard(true)} />
+    </ErrorBoundary>
+  );
 }
 
 function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { user: User, userProfile: UserProfile | null, isAdminUser: boolean, onLogout: () => void, onOpenAdmin: () => void }) {
@@ -303,7 +386,11 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
   const [documents, setDocuments] = useState<DocumentRecord[]>(() => {
     try {
       const saved = safeStorage.getItem('archiver_documents');
-      return saved ? JSON.parse(saved) : [];
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+      return [];
     } catch (e) {
       console.error('Failed to parse saved documents:', e);
       return [];
@@ -358,7 +445,11 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
   const [categories, setCategories] = useState<FolderCategory[]>(() => {
     try {
       const saved = safeStorage.getItem('archiver_categories');
-      return saved ? JSON.parse(saved) : DEFAULT_CATEGORIES;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+      return DEFAULT_CATEGORIES;
     } catch (e) {
       return DEFAULT_CATEGORIES;
     }
@@ -979,6 +1070,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
       securityLetterNumber,
       securityLetterDate
     };
+  };
 
   // Trigger Scanner Probe on Modal open
   useEffect(() => {
@@ -6576,5 +6668,4 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
       </div>
     </div>
   );
-}
 }

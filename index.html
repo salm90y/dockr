@@ -36,6 +36,40 @@
           document.body.appendChild(errorDiv);
         }, 100);
       });
+
+      window.addEventListener('unhandledrejection', function(event) {
+        setTimeout(function() {
+          if (document.getElementById('diagnostic-error-overlay')) return;
+          var errorDiv = document.createElement('div');
+          errorDiv.id = 'diagnostic-error-overlay';
+          errorDiv.style.position = 'fixed';
+          errorDiv.style.top = '0';
+          errorDiv.style.left = '0';
+          errorDiv.style.width = '100vw';
+          errorDiv.style.height = '100vh';
+          errorDiv.style.backgroundColor = '#050505';
+          errorDiv.style.color = '#e5e5e5';
+          errorDiv.style.padding = '30px';
+          errorDiv.style.fontFamily = 'monospace';
+          errorDiv.style.zIndex = '999999';
+          errorDiv.style.overflow = 'auto';
+          errorDiv.style.direction = 'rtl';
+          errorDiv.style.boxSizing = 'border-box';
+          
+          var reason = event.reason;
+          var msg = reason ? (reason.message || reason) : 'Unhandled promise rejection';
+          var stack = (reason && reason.stack) ? reason.stack : 'No stack trace available';
+
+          errorDiv.innerHTML = '<div style="max-width:800px;margin:0 auto;border:1px solid #ff4444;background-color:#110505;padding:25px;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.5);">' +
+            '<h1 style="color:#ff4444;font-size:22px;margin-top:0;margin-bottom:15px;font-family:sans-serif;">⚠️ عذراً، تم الكشف عن خطأ تشغيل غير معالج (Promise Rejection)</h1>' +
+            '<p style="color:#bbb;font-size:14px;line-height:1.6;margin-bottom:20px;">تظهر هذه الشاشة لتوضيح سبب توقف التطبيق أو ظهور الشاشة البيضاء. يرجى تصوير هذه الرسالة وإرسالها ليتم حل المشكلة فوراً:</p>' +
+            '<div style="background:#000;padding:15px;border:1px solid #333;border-radius:4px;color:#ff6b6b;font-size:13px;line-height:1.5;white-space:pre-wrap;text-align:left;direction:ltr;overflow-x:auto;">' + 
+            'Error: ' + msg + '\n\n' + stack + '</div>' +
+            '<div style="margin-top:20px;text-align:right;"><button onclick="window.location.reload(true)" style="background:#ff4444;color:#white;border:none;padding:10px 20px;font-weight:bold;cursor:pointer;border-radius:4px;">إعادة تحميل الصفحة</button></div>' +
+            '</div>';
+          document.body.appendChild(errorDiv);
+        }, 100);
+      });
     </script>
   </head>
   <body>
