@@ -65,6 +65,7 @@ import { db, handleFirestoreError, OperationType, auth } from './lib/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { Login } from './components/Login';
 import { AdminDashboard } from './components/AdminDashboard';
+import { safeStorage } from './lib/safeStorage';
 import Tesseract from 'tesseract.js';
 
 // Helper function to encode Arabic text into safe base64 URL parameter
@@ -112,6 +113,18 @@ const decodeMetadata = (base64Str: string) => {
     console.error('Decoding error:', e);
     return null;
   }
+};
+
+// Safe UUID Generator for all environments including non-secure sandboxed iframes
+const safeRandomUUID = () => {
+  if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function') {
+    return window.crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 };
 
 // Beautiful, verified official logo of the Iraqi Ministry of Interior (وزارة الداخلية العراقية)
@@ -162,8 +175,8 @@ export default function App() {
 
   useEffect(() => {
     // 1. Check if there is a secure local offline user session stored
-    const localUserStr = localStorage.getItem('archiver_local_user');
-    const localProfileStr = localStorage.getItem('archiver_local_profile');
+    const localUserStr = safeStorage.getItem('archiver_local_user');
+    const localProfileStr = safeStorage.getItem('archiver_local_profile');
     if (localUserStr && localProfileStr) {
       try {
         setUser(JSON.parse(localUserStr));
@@ -215,8 +228,8 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      localStorage.removeItem('archiver_local_user');
-      localStorage.removeItem('archiver_local_profile');
+      safeStorage.removeItem('archiver_local_user');
+      safeStorage.removeItem('archiver_local_profile');
       setUser(null);
       setUserProfile(null);
       await signOut(auth);
@@ -239,7 +252,7 @@ export default function App() {
   }
 
   if (showAdminDashboard && isAdminUser) {
-    const isOffline = localStorage.getItem('archiver_is_offline') === 'true';
+    const isOffline = safeStorage.getItem('archiver_is_offline') === 'true';
     return (
       <div dir="rtl" className="min-h-screen bg-[#050505] text-[#e5e5e5] font-sans antialiased pb-12">
         <header className="bg-gradient-to-b from-[#0a0a0a] to-[#040404] border-b border-[#1c1c1c] sticky top-0 z-40 shadow-xl px-4 py-3 flex justify-between items-center">
@@ -265,31 +278,31 @@ export default function App() {
 function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { user: User, userProfile: UserProfile | null, isAdminUser: boolean, onLogout: () => void, onOpenAdmin: () => void }) {
   // Offline Mode & Local Heuristics / Ollama AI Configuration States
   const [isOfflineMode, setIsOfflineMode] = useState<boolean>(() => {
-    return localStorage.getItem('archiver_is_offline') === 'true';
+    return safeStorage.getItem('archiver_is_offline') === 'true';
   });
   const [useOllama, setUseOllama] = useState<boolean>(() => {
-    return localStorage.getItem('archiver_use_ollama') === 'true';
+    return safeStorage.getItem('archiver_use_ollama') === 'true';
   });
   const [ollamaUrl, setOllamaUrl] = useState<string>(() => {
-    return localStorage.getItem('archiver_ollama_url') || 'http://localhost:11434';
+    return safeStorage.getItem('archiver_ollama_url') || 'http://localhost:11434';
   });
   const [ollamaModel, setOllamaModel] = useState<string>(() => {
-    return localStorage.getItem('archiver_ollama_model') || 'qwen2.5:7b';
+    return safeStorage.getItem('archiver_ollama_model') || 'qwen2.5:7b';
   });
 
   useEffect(() => {
-    localStorage.setItem('archiver_is_offline', String(isOfflineMode));
+    safeStorage.setItem('archiver_is_offline', String(isOfflineMode));
   }, [isOfflineMode]);
 
   useEffect(() => {
-    localStorage.setItem('archiver_use_ollama', String(useOllama));
-    localStorage.setItem('archiver_ollama_url', ollamaUrl);
-    localStorage.setItem('archiver_ollama_model', ollamaModel);
+    safeStorage.setItem('archiver_use_ollama', String(useOllama));
+    safeStorage.setItem('archiver_ollama_url', ollamaUrl);
+    safeStorage.setItem('archiver_ollama_model', ollamaModel);
   }, [useOllama, ollamaUrl, ollamaModel]);
 
   const [documents, setDocuments] = useState<DocumentRecord[]>(() => {
     try {
-      const saved = localStorage.getItem('archiver_documents');
+      const saved = safeStorage.getItem('archiver_documents');
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
       console.error('Failed to parse saved documents:', e);
@@ -308,14 +321,14 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
       
       // Order descending by createdAt
       docsList.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
+ 
       if (docsList.length > 0) {
         setDocuments(docsList);
-        localStorage.setItem('archiver_documents', JSON.stringify(docsList));
+        safeStorage.setItem('archiver_documents', JSON.stringify(docsList));
       } else {
         // If Firestore is empty but we have local storage data, seed Firestore!
         try {
-          const saved = localStorage.getItem('archiver_documents');
+          const saved = safeStorage.getItem('archiver_documents');
           const localDocs = saved ? JSON.parse(saved) as DocumentRecord[] : [];
           if (localDocs.length > 0) {
             localDocs.forEach((docRecord) => {
@@ -337,14 +350,14 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
       console.error("Firestore snapshot listener failed:", error);
       handleFirestoreError(error, OperationType.GET, "documents");
     });
-
+ 
     return () => unsubscribe();
   }, [isOfflineMode]);
-
+ 
   // Custom categories / folders states
   const [categories, setCategories] = useState<FolderCategory[]>(() => {
     try {
-      const saved = localStorage.getItem('archiver_categories');
+      const saved = safeStorage.getItem('archiver_categories');
       return saved ? JSON.parse(saved) : DEFAULT_CATEGORIES;
     } catch (e) {
       return DEFAULT_CATEGORIES;
@@ -367,7 +380,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
   }>>([]);
 
   const showToast = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string, docId?: string) => {
-    const id = crypto.randomUUID();
+    const id = safeRandomUUID();
     setToasts(prev => [...prev, { id, type, title, message, docId }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
@@ -391,7 +404,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
           return (a.createdAt || 0) - (b.createdAt || 0);
         });
         setCategories(catList);
-        localStorage.setItem('archiver_categories', JSON.stringify(catList));
+        safeStorage.setItem('archiver_categories', JSON.stringify(catList));
       } else {
         // Seed DEFAULT_CATEGORIES to Firestore if Firestore is completely empty
         DEFAULT_CATEGORIES.forEach((cat, idx) => {
@@ -422,7 +435,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
       .then(data => {
         if (data && Array.isArray(data) && data.length > 0) {
           setDocuments(data);
-          localStorage.setItem('archiver_documents', JSON.stringify(data));
+          safeStorage.setItem('archiver_documents', JSON.stringify(data));
         }
       })
       .catch(err => console.error("Failed to load documents from local API:", err));
@@ -433,7 +446,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
       .then(data => {
         if (data && Array.isArray(data) && data.length > 0) {
           setCategories(data);
-          localStorage.setItem('archiver_categories', JSON.stringify(data));
+          safeStorage.setItem('archiver_categories', JSON.stringify(data));
         }
       })
       .catch(err => console.error("Failed to load categories from local API:", err));
@@ -442,13 +455,13 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
   // Auto-save Documents to LocalStorage on state changes for local-first/offline consistency
   useEffect(() => {
     if (documents && documents.length > 0) {
-      localStorage.setItem('archiver_documents', JSON.stringify(documents));
+      safeStorage.setItem('archiver_documents', JSON.stringify(documents));
     }
   }, [documents]);
 
   useEffect(() => {
     if (categories && categories.length > 0) {
-      localStorage.setItem('archiver_categories', JSON.stringify(categories));
+      safeStorage.setItem('archiver_categories', JSON.stringify(categories));
 
       // If we are in offline mode, sync categories to local filesystem database
       if (isOfflineMode) {
@@ -1178,7 +1191,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
   // Ingest captured image to pipeline
   const ingestCapturedImage = (dataUrl: string) => {
     setShowResults(true);
-    const id = crypto.randomUUID();
+    const id = safeRandomUUID();
     const base64Data = dataUrl.split(',')[1];
     const mimeType = 'image/jpeg';
     
@@ -1622,7 +1635,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
                         reader.onloadend = () => {
                           const base64data = (reader.result as string).split(',')[1];
                           const imageUrl = URL.createObjectURL(blob);
-                          const id = crypto.randomUUID();
+                          const id = safeRandomUUID();
                           
                           const record: DocumentRecord = {
                             id,
@@ -1815,7 +1828,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
               pageIndex++;
               setScanProgress(Math.min(30 + pageIndex * 20, 95));
               
-              const id = crypto.randomUUID();
+              const id = safeRandomUUID();
               const record: DocumentRecord = {
                 id,
                 fileName: `مسح_سكنر_حقيقي_${pageIndex}_${selectedScanner.replace(/[^a-zA-Z0-9]/g, '_')}.png`,
@@ -1932,7 +1945,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
       try {
         const base64Data = await fileToBase64(file);
         const imageUrl = URL.createObjectURL(file);
-        const id = crypto.randomUUID();
+        const id = safeRandomUUID();
 
         const record: DocumentRecord = {
           id,
@@ -2299,7 +2312,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
   const loadDemoDocument = (type: 'admin' | 'saudi' | 'board') => {
     try {
       const demo = generateSampleDocument(type);
-      const id = crypto.randomUUID();
+      const id = safeRandomUUID();
       // Since it's canvas base64, we can set imageUrl as base64 itself
       const imageUrl = `data:${demo.mimeType};base64,${demo.base64}`;
 

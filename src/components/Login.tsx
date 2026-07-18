@@ -4,6 +4,7 @@ import { LogIn, User, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { safeStorage } from '../lib/safeStorage';
 
 interface LoginProps {
   onLoginSuccess?: (localUser?: any, localProfile?: any) => void;
@@ -41,10 +42,10 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           if (resData.success) {
             // Save local user session details to localStorage for persistence
             if (rememberMe) {
-              localStorage.setItem('archiver_local_user', JSON.stringify(resData.user));
-              localStorage.setItem('archiver_local_profile', JSON.stringify(resData.profile));
+              safeStorage.setItem('archiver_local_user', JSON.stringify(resData.user));
+              safeStorage.setItem('archiver_local_profile', JSON.stringify(resData.profile));
               // Also toggle offline mode true automatically since we are self-hosting on Docker
-              localStorage.setItem('archiver_is_offline', 'true');
+              safeStorage.setItem('archiver_is_offline', 'true');
             }
             if (onLoginSuccess) {
               onLoginSuccess(resData.user, resData.profile);

@@ -15,6 +15,9 @@ COPY . .
 # Build the Vite frontend and compiled CJS Express server
 RUN npm run build
 
+# Prune node_modules to only include production dependencies
+RUN npm prune --omit=dev
+
 # --- Production Runner Stage ---
 FROM node:20-alpine AS runner
 
@@ -23,9 +26,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy package files and install only production dependencies
+# Copy package files
 COPY package*.json ./
-RUN npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
+
+# Copy node_modules from builder
+COPY --from=builder /app/node_modules ./node_modules
 
 # Copy built application assets from the builder stage
 COPY --from=builder /app/dist ./dist

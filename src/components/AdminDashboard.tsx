@@ -5,6 +5,7 @@ import { collection, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp, query,
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { UserProfile, AuditLog } from '../types';
+import { safeStorage } from '../lib/safeStorage';
 
 export const AdminDashboard = ({ isOfflineMode = false }: { isOfflineMode?: boolean }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -51,7 +52,7 @@ export const AdminDashboard = ({ isOfflineMode = false }: { isOfflineMode?: bool
       const interval = setInterval(fetchLocalUsers, 5000);
 
       // Load offline audit logs from localStorage if stored
-      const savedLogs = localStorage.getItem('archiver_audit_logs');
+      const savedLogs = safeStorage.getItem('archiver_audit_logs');
       if (savedLogs) {
         try {
           setLogs(JSON.parse(savedLogs));
