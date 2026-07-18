@@ -37,6 +37,68 @@ function getAiClient(): GoogleGenAI {
   return aiClient;
 }
 
+// Highly robust utility to normalize Arabic characters and rejoin disconnected letters from OCR output
+function rejoinArabicLetters(text: string): string {
+  if (!text) return "";
+
+  // 1. Convert any Arabic presentation forms (isolated/initial/medial/final glyphs) 
+  // to their standard nominal Arabic characters so they can connect correctly in browser.
+  let normalized = text.normalize('NFKC');
+
+  // 2. Fix spaced-out Arabic letters (e.g., "ج م ه و ر ي ة" -> "جمهورية")
+  // We process line by line to preserve formatting and layout where possible.
+  const lines = normalized.split('\n');
+  const processedLines = lines.map(line => {
+    const tokens = line.split(/\s+/).filter(t => t.length > 0);
+    if (tokens.length === 0) return line;
+
+    // Check if the majority of Arabic tokens in this line are single characters.
+    const arabicTokens = tokens.filter(t => /[\u0600-\u06FF]/.test(t));
+    if (arabicTokens.length > 2) {
+      const singleLetterCount = arabicTokens.filter(t => t.length === 1).length;
+      const ratio = singleLetterCount / arabicTokens.length;
+      
+      // If more than 60% of the Arabic tokens are single letters, it's a spaced-out OCR line.
+      if (ratio > 0.6) {
+        let newLine = "";
+        for (let i = 0; i < tokens.length; i++) {
+          const current = tokens[i];
+          const next = tokens[i + 1];
+          
+          newLine += current;
+          
+          if (next) {
+            const isCurrentArabicChar = current.length === 1 && /[\u0600-\u06FF]/.test(current);
+            const isNextArabicChar = next.length === 1 && /[\u0600-\u06FF]/.test(next);
+            
+            // If both are single Arabic characters, do NOT put a space between them (join them).
+            if (isCurrentArabicChar && isNextArabicChar) {
+              // Join directly without space
+            } else {
+              newLine += " ";
+            }
+          }
+        }
+        return newLine;
+      }
+    }
+    
+    // Fallback: simple recursive replacement of isolated letter spacing.
+    let prevLine;
+    let tempLine = line;
+    do {
+      prevLine = tempLine;
+      // Match a single Arabic char, followed by one or more spaces, followed by another single Arabic char,
+      // where the second is at the end or followed by a space, and the first is at the start or preceded by a space.
+      tempLine = tempLine.replace(/(?<=^|\s)([\u0600-\u06FF])\s+([\u0600-\u06FF])(?=\s|$)/g, '$1$2');
+    } while (tempLine !== prevLine);
+
+    return tempLine;
+  });
+
+  return processedLines.join('\n');
+}
+
 // API endpoint for document data extraction
 app.post("/api/extract", async (req, res) => {
   const { imageBase64, mimeType, fileName, useOllama, ollamaUrl, ollamaModel, extractedTextFallback } = req.body;
@@ -101,7 +163,7 @@ app.post("/api/extract", async (req, res) => {
 
   // Local Offline Arabic Heuristic Regex Parser
   const parseArabicDocumentOffline = (text: string, fName?: string) => {
-    const cleanText = text || "";
+    const cleanText = rejoinArabicLetters(text || "");
     
     // 1. Extract Document Number
     let documentNumber = "";
