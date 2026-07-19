@@ -68,6 +68,28 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { safeStorage } from './lib/safeStorage';
 import Tesseract from 'tesseract.js';
 
+// Shared, persistent Tesseract.js worker for high-performance offline OCR
+let cachedTesseractWorker: any = null;
+let currentOcrLoggerCallback: ((m: any) => void) | null = null;
+
+async function getSharedTesseractWorker() {
+  if (!cachedTesseractWorker) {
+    console.log("Initializing persistent, high-performance Tesseract.js worker with 'ara' language...");
+    cachedTesseractWorker = await Tesseract.createWorker('ara', 1, {
+      logger: (m) => {
+        if (currentOcrLoggerCallback) {
+          try {
+            currentOcrLoggerCallback(m);
+          } catch (err) {
+            console.error("Error in active OCR progress callback:", err);
+          }
+        }
+      }
+    });
+  }
+  return cachedTesseractWorker;
+}
+
 // Helper function to encode Arabic text into safe base64 URL parameter
 const encodeMetadata = (doc: any) => {
   const dataToEncode = {
@@ -502,9 +524,14 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
                 handleFirestoreError(err, OperationType.WRITE, `documents/${docRecord.id}`);
               });
             });
+          } else {
+            setDocuments([]);
+            safeStorage.setItem('archiver_documents', JSON.stringify([]));
           }
         } catch (e) {
           console.error("Failed to seed Firestore from local storage:", e);
+          setDocuments([]);
+          safeStorage.setItem('archiver_documents', JSON.stringify([]));
         }
       }
     }, (error) => {
@@ -598,7 +625,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
     fetch('/api/local/documents')
       .then(res => res.json())
       .then(data => {
-        if (data && Array.isArray(data) && data.length > 0) {
+        if (data && Array.isArray(data)) {
           setDocuments(data);
           safeStorage.setItem('archiver_documents', JSON.stringify(data));
         }
@@ -609,7 +636,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
     fetch('/api/local/categories')
       .then(res => res.json())
       .then(data => {
-        if (data && Array.isArray(data) && data.length > 0) {
+        if (data && Array.isArray(data)) {
           setCategories(data);
           safeStorage.setItem('archiver_categories', JSON.stringify(data));
         }
@@ -619,13 +646,13 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
 
   // Auto-save Documents to LocalStorage on state changes for local-first/offline consistency
   useEffect(() => {
-    if (documents && documents.length > 0) {
+    if (documents) {
       safeStorage.setItem('archiver_documents', JSON.stringify(documents));
     }
   }, [documents]);
 
   useEffect(() => {
-    if (categories && categories.length > 0) {
+    if (categories) {
       safeStorage.setItem('archiver_categories', JSON.stringify(categories));
 
       // If we are in offline mode, sync categories to local filesystem database
@@ -2219,40 +2246,38 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
 
         const dataUrl = base64Data.startsWith('data:') ? base64Data : `data:${mimeType};base64,${base64Data}`;
         
-        console.log("Starting client-side Tesseract.js OCR for offline mode...");
+        console.log("Starting client-side Tesseract.js OCR for offline mode using persistent worker...");
         
-        const ocrResult = await Tesseract.recognize(
-          dataUrl,
-          'ara+eng',
-          {
-            logger: (m: any) => {
-              console.log("OCR Progress:", m);
-              if (m.status === 'recognizing text') {
-                const pct = Math.round(m.progress * 100);
-                setDocuments(prev => prev.map(doc => {
-                  if (doc.id === id) {
-                    return { ...doc, ocrProgress: `جاري قراءة واستخلاص النص: ${pct}%` };
-                  }
-                  return doc;
-                }));
-              } else if (m.status === 'loading language traineddata') {
-                setDocuments(prev => prev.map(doc => {
-                  if (doc.id === id) {
-                    return { ...doc, ocrProgress: 'جاري تحميل حزمة اللغة العربية (أول مرة)...' };
-                  }
-                  return doc;
-                }));
-              } else if (m.status === 'loading tesseract core') {
-                setDocuments(prev => prev.map(doc => {
-                  if (doc.id === id) {
-                    return { ...doc, ocrProgress: 'جاري تهيئة محرك القراءة الأساسي...' };
-                  }
-                  return doc;
-                }));
+        // Setup the dynamic logger callback for our shared worker
+        currentOcrLoggerCallback = (m: any) => {
+          console.log("OCR Progress:", m);
+          if (m.status === 'recognizing text') {
+            const pct = Math.round(m.progress * 100);
+            setDocuments(prev => prev.map(doc => {
+              if (doc.id === id) {
+                return { ...doc, ocrProgress: `جاري قراءة واستخلاص النص: ${pct}%` };
               }
-            }
+              return doc;
+            }));
+          } else if (m.status === 'loading language traineddata') {
+            setDocuments(prev => prev.map(doc => {
+              if (doc.id === id) {
+                return { ...doc, ocrProgress: 'جاري تحميل حزمة اللغة العربية (أول مرة)...' };
+              }
+              return doc;
+            }));
+          } else if (m.status === 'loading tesseract core') {
+            setDocuments(prev => prev.map(doc => {
+              if (doc.id === id) {
+                return { ...doc, ocrProgress: 'جاري تهيئة محرك القراءة الأساسي...' };
+              }
+              return doc;
+            }));
           }
-        );
+        };
+
+        const worker = await getSharedTesseractWorker();
+        const ocrResult = await worker.recognize(dataUrl);
 
         const rawText = ocrResult.data.text || "";
         const text = rejoinArabicLetters(rawText);
