@@ -112,6 +112,55 @@ function rejoinArabicLetters(text: string): string {
   return processedLines.join('\n');
 }
 
+// API endpoint to check Ollama connection status through multiple routes
+app.post("/api/ollama/test", async (req, res) => {
+  const { ollamaUrl } = req.body;
+  const targetOllamaUrl = (ollamaUrl || "http://localhost:11434").replace(/\/$/, "");
+
+  const urlsToTry = [targetOllamaUrl];
+  if (targetOllamaUrl.includes("localhost") || targetOllamaUrl.includes("127.0.0.1")) {
+    urlsToTry.push(targetOllamaUrl.replace("localhost", "ollama").replace("127.0.0.1", "ollama"));
+    urlsToTry.push(targetOllamaUrl.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal"));
+    urlsToTry.push(targetOllamaUrl.replace("localhost", "172.17.0.1").replace("127.0.0.1", "172.17.0.1"));
+  }
+
+  let lastError: any = null;
+  let successfulUrl = "";
+  let modelsList: any[] = [];
+
+  for (const url of urlsToTry) {
+    try {
+      const response = await fetch(`${url}/api/tags`, {
+        // Use timeout signal via AbortSignal.timeout
+        signal: AbortSignal.timeout(4000)
+      });
+      if (response.ok) {
+        const data: any = await response.json();
+        successfulUrl = url;
+        modelsList = data.models || [];
+        break;
+      } else {
+        lastError = new Error(`Server returned status ${response.status}`);
+      }
+    } catch (err: any) {
+      lastError = err;
+    }
+  }
+
+  if (successfulUrl) {
+    return res.json({
+      success: true,
+      url: successfulUrl,
+      models: modelsList
+    });
+  } else {
+    return res.status(500).json({
+      success: false,
+      error: lastError?.message || "Failed to connect to Ollama through all network routes."
+    });
+  }
+});
+
 // API endpoint for document data extraction
 app.post("/api/extract", async (req, res) => {
   const { imageBase64, mimeType, fileName, useOllama, ollamaUrl, ollamaModel, extractedTextFallback } = req.body;
@@ -409,75 +458,92 @@ app.post("/api/extract", async (req, res) => {
       ? imageBase64.split(",")[1] 
       : imageBase64;
 
+    const isMultimodalModel = (modelName: string): boolean => {
+      const name = String(modelName || "").toLowerCase();
+      return name.includes("llava") || 
+             name.includes("vl") || 
+             name.includes("minicpm") || 
+             name.includes("moondream") || 
+             name.includes("vision") || 
+             name.includes("bakllava");
+    };
+
+    const isMultimodal = isMultimodalModel(targetOllamaModel);
+
     for (const url of urlsToTry) {
       try {
-        // Try with image first (for multimodal models like LLaVA or Qwen-VL)
+        const hasVision = isMultimodal && rawBase64;
+        console.log(`Connecting to Ollama at ${url} (Mode: ${hasVision ? 'Multimodal' : 'Text-Only'}, Timeout: 180s)`);
+        
+        const payload: any = {
+          model: targetOllamaModel,
+          prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
+          stream: false,
+          format: "json",
+          options: {
+            temperature: 0.1
+          }
+        };
+        
+        if (hasVision) {
+          payload.images = [rawBase64];
+        }
+
+        // Try the chosen mode
         ollamaRes = await fetch(`${url}/api/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: targetOllamaModel,
-            prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
-            stream: false,
-            format: "json",
-            images: rawBase64 ? [rawBase64] : [],
-            options: {
-              temperature: 0.1
-            }
-          }),
-          signal: AbortSignal.timeout(8000) // 8 seconds timeout for connection
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(180000) // Generous 3-minute timeout for slow local machines / CPUs
         });
 
         if (ollamaRes && ollamaRes.ok) {
-          console.log(`Successfully connected to Ollama (multimodal) at: ${url}`);
+          console.log(`Successfully connected to Ollama at: ${url}`);
           break;
-        } else if (ollamaRes) {
-          // Retry immediately as text-only in case the model is text-only (e.g. qwen2.5:7b, llama3)
+        }
+
+        // If the multimodal request failed because of model incompatibility, fallback to text-only
+        if (hasVision) {
+          console.warn(`Multimodal failed for ${targetOllamaModel} at ${url}. Retrying as Text-Only with 180s timeout...`);
+          delete payload.images;
           ollamaRes = await fetch(`${url}/api/generate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: targetOllamaModel,
-              prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
-              stream: false,
-              format: "json",
-              options: {
-                temperature: 0.1
-              }
-            }),
-            signal: AbortSignal.timeout(10000)
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(180000)
           });
-          
           if (ollamaRes && ollamaRes.ok) {
-            console.log(`Successfully connected to Ollama (text-only retry) at: ${url}`);
+            console.log(`Successfully connected to Ollama (Text-Only fallback) at: ${url}`);
             break;
           }
         }
       } catch (err: any) {
         lastOllamaError = err;
+        console.error(`Ollama connection error at ${url}:`, err.message || err);
         
-        try {
-          ollamaRes = await fetch(`${url}/api/generate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: targetOllamaModel,
-              prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
-              stream: false,
-              format: "json",
-              options: {
-                temperature: 0.1
-              }
-            }),
-            signal: AbortSignal.timeout(10000)
-          });
-          
-          if (ollamaRes && ollamaRes.ok) {
-            console.log(`Successfully connected to Ollama (text-only fallback) at: ${url}`);
-            break;
+        // If it was multimodal and errored, we can try text-only fallback on the same URL
+        if (isMultimodal && rawBase64) {
+          try {
+            console.log(`Retrying as Text-Only on ${url} after error...`);
+            ollamaRes = await fetch(`${url}/api/generate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: targetOllamaModel,
+                prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
+                stream: false,
+                format: "json",
+                options: { temperature: 0.1 }
+              }),
+              signal: AbortSignal.timeout(180000)
+            });
+            if (ollamaRes && ollamaRes.ok) {
+              console.log(`Successfully connected to Ollama (Text-Only fallback after error) at: ${url}`);
+              break;
+            }
+          } catch (innerErr: any) {
+            lastOllamaError = innerErr;
           }
-        } catch (innerErr: any) {
-          // Silent fallback
         }
       }
     }

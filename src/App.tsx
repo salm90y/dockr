@@ -2308,6 +2308,18 @@ ${text}`;
 
             const rawBase64 = base64Data && base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
             
+            const isMultimodalModel = (modelName: string): boolean => {
+              const name = String(modelName || "").toLowerCase();
+              return name.includes("llava") || 
+                     name.includes("vl") || 
+                     name.includes("minicpm") || 
+                     name.includes("moondream") || 
+                     name.includes("vision") || 
+                     name.includes("bakllava");
+            };
+
+            const isMultimodal = isMultimodalModel(ollamaModel);
+
             const attemptOllamaReq = async (useImage: boolean, timeout: number) => {
               const controller = new AbortController();
               const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -2335,16 +2347,19 @@ ${text}`;
 
             let localOllamaResponse;
             try {
-              // 1st Try: Multimodal with image
-              localOllamaResponse = await attemptOllamaReq(true, 40000); // 40s timeout for multimodal
-              if (!localOllamaResponse.ok) {
-                throw new Error("Multimodal rejected");
+              if (isMultimodal && rawBase64) {
+                console.log("Model is multimodal, trying with image. Timeout: 180s");
+                localOllamaResponse = await attemptOllamaReq(true, 180000); // 180s timeout
+                if (!localOllamaResponse.ok) {
+                  throw new Error("Multimodal rejected");
+                }
+              } else {
+                console.log("Model is text-only, skipping image. Timeout: 180s");
+                localOllamaResponse = await attemptOllamaReq(false, 180000); // 180s timeout
               }
-              console.log("Ollama Multimodal success");
             } catch (err1) {
-              console.log("Ollama Multimodal failed or rejected, retrying text-only:", err1);
-              // 2nd Try: Text only
-              localOllamaResponse = await attemptOllamaReq(false, 40000); // 40s timeout for text
+              console.log("Ollama first attempt failed, retrying text-only...", err1);
+              localOllamaResponse = await attemptOllamaReq(false, 180000); // 180s timeout fallback
             }
 
             if (localOllamaResponse.ok) {
@@ -5909,23 +5924,48 @@ ${text}`;
                       type="button"
                       onClick={async () => {
                         try {
-                          showToast('info', 'جاري فحص الاتصال...', 'يتم الآن محاولة الاتصال بـ Ollama محلياً...');
+                          showToast('info', 'جاري فحص الاتصال المباشر...', 'يتم الآن محاولة الاتصال بـ Ollama مباشرة من المتصفح...');
                           const testUrl = (ollamaUrl || 'http://localhost:11434').replace(/\/$/, "");
                           const controller = new AbortController();
-                          const tId = setTimeout(() => controller.abort(), 4000); // 4s timeout
+                          const tId = setTimeout(() => controller.abort(), 4500); // 4.5s timeout
                           
-                          const response = await fetch(`${testUrl}/api/tags`, { signal: controller.signal });
-                          clearTimeout(tId);
-                          
-                          if (response.ok) {
-                            const data = await response.json();
-                            const modelsList = data.models ? data.models.map((m: any) => m.name).join(', ') : 'متصل';
-                            showToast('success', 'تم الاتصال بنجاح! 🎉', `ملقم Ollama متصل وجاهز للعمل. الموديلات المتوفرة: ${modelsList}`);
-                          } else {
-                            showToast('error', 'فشل الاتصال بـ Ollama', `الملقم استجاب برمز خطأ: ${response.status}`);
+                          let response;
+                          let directSuccess = false;
+                          try {
+                            response = await fetch(`${testUrl}/api/tags`, { signal: controller.signal });
+                            clearTimeout(tId);
+                            if (response.ok) {
+                              directSuccess = true;
+                              const data = await response.json();
+                              const modelsList = data.models ? data.models.map((m: any) => m.name).join(', ') : 'متصل';
+                              showToast('success', 'تم الاتصال المباشر بنجاح! 🎉', `ملقم Ollama متصل ومفتوح لـ CORS وجاهز للعمل. الموديلات المتوفرة: ${modelsList}`);
+                            }
+                          } catch (directErr) {
+                            clearTimeout(tId);
+                            console.log("Direct client-side Ollama check failed. Trying server-side connection proxy...", directErr);
+                          }
+
+                          if (!directSuccess) {
+                            showToast('info', 'جاري فحص الاتصال عبر الخادم...', 'تفحص الآن شبكة الكانتينر وخادم Ollama...');
+                            const serverTestRes = await fetch('/api/ollama/test', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ ollamaUrl })
+                            });
+
+                            if (serverTestRes.ok) {
+                              const serverData = await serverTestRes.json();
+                              const modelsList = serverData.models && serverData.models.length > 0 
+                                ? serverData.models.map((m: any) => m.name).join(', ') 
+                                : 'لا توجد موديلات محملة بعد';
+                              showToast('success', 'تم الاتصال عبر الخادم بنجاح! 🐳', `تمكن الخادم من الاتصال بـ Ollama داخل شبكة Docker بنجاح. الموديلات المتوفرة: ${modelsList}`);
+                            } else {
+                              const errData = await serverTestRes.json().catch(() => ({}));
+                              throw new Error(errData.error || `استجاب الخادم برمز خطأ: ${serverTestRes.status}`);
+                            }
                           }
                         } catch (e: any) {
-                          showToast('error', 'تعذر الوصول لـ Ollama', `تأكد من تشغيل Ollama وموافقة CORS. الخطأ: ${e.message || e}`);
+                          showToast('error', 'تعذر الوصول لـ Ollama بالكامل', `تأكد من تشغيل حاوية Ollama (Docker) وتنزيل الموديل المطلوب. الخطأ: ${e.message || e}`);
                         }
                       }}
                       className="px-4 py-2 bg-amber-950/20 hover:bg-amber-900/30 text-amber-400 border border-amber-500/30 text-xs font-bold rounded-sm transition-all cursor-pointer font-cairo"
