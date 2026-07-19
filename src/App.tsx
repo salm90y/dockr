@@ -1309,7 +1309,18 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
           : { facingMode: { ideal: "environment" } }
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (firstErr: any) {
+        console.warn('Camera failed with specified constraints, trying generic video constraints...', firstErr);
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        } catch (secondErr: any) {
+          throw secondErr;
+        }
+      }
+
       setCameraStream(stream);
       
       // Delay slightly to ensure video element is bound
@@ -1335,11 +1346,11 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
     } catch (err: any) {
       console.error('Camera access error:', err);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraError('تم رفض إذن الوصول للكاميرا. يرجى تفعيل الإذن من إعدادات المتصفح.');
+        setCameraError('تم رفض إذن الوصول للكاميرا. يرجى تفعيل الإذن من إعدادات المتصفح أو فتح التطبيق في نافذة مستقلة (خارج الـ iframe).');
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
         setCameraError('لم يتم العثور على كاميرا متصلة بجهازك.');
       } else {
-        setCameraError('فشل تشغيل الكاميرا. يرجى التأكد من عدم استخدامها في تطبيق آخر أو منح الصلاحيات اللازمة.');
+        setCameraError('فشل تشغيل الكاميرا (قد تكون مستخدمة في تطبيق آخر أو تواجه قيود أمان ضمن إطار المعاينة iframe). يرجى فتح التطبيق في نافذة مستقلة لتجاوز هذه القيود.');
       }
     } finally {
       setIsCameraLoading(false);

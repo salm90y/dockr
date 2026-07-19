@@ -400,6 +400,7 @@ app.post("/api/extract", async (req, res) => {
     // Resolve localhost to Docker host if running inside a container
     const urlsToTry = [targetOllamaUrl];
     if (targetOllamaUrl.includes("localhost") || targetOllamaUrl.includes("127.0.0.1")) {
+      urlsToTry.push(targetOllamaUrl.replace("localhost", "ollama").replace("127.0.0.1", "ollama"));
       urlsToTry.push(targetOllamaUrl.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal"));
       urlsToTry.push(targetOllamaUrl.replace("localhost", "172.17.0.1").replace("127.0.0.1", "172.17.0.1"));
     }
