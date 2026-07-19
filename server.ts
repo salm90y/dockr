@@ -486,7 +486,9 @@ app.post("/api/extract", async (req, res) => {
             temperature: 0.0,
             top_p: 0.1,
             top_k: 10,
-            seed: 42
+            seed: 42,
+            num_ctx: 8192,
+            num_predict: 4096
           }
         };
         
@@ -542,7 +544,9 @@ app.post("/api/extract", async (req, res) => {
                   temperature: 0.0,
                   top_p: 0.1,
                   top_k: 10,
-                  seed: 42
+                  seed: 42,
+                  num_ctx: 8192,
+                  num_predict: 4096
                 }
               }),
               signal: AbortSignal.timeout(180000)
@@ -574,13 +578,19 @@ app.post("/api/extract", async (req, res) => {
         try {
           extractedData = JSON.parse(cleanText);
         } catch (pe) {
-          const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            try {
+          try {
+            const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
               extractedData = JSON.parse(jsonMatch[0]);
-            } catch (innerE) {
-              console.error("Failed to parse inner JSON from Ollama:", innerE);
             }
+          } catch (innerE) {
+            console.error("Failed to parse inner JSON from Ollama:", innerE);
+            // We still have cleanText from Ollama, maybe we can extract the document content using regex manually so the text is not completely lost.
+            extractedData = {
+              documentContent: cleanText,
+              extractedText: cleanText,
+              documentSubject: "تعذر استخراج البيانات بدقة (خطأ في تنسيق JSON)"
+            };
           }
         }
         
@@ -624,7 +634,9 @@ app.post("/api/extract", async (req, res) => {
             ? offlineHeuristicData.documentSubject
             : (filenameData.documentSubject || "كتاب إداري غير معنون"),
           documentType: offlineHeuristicData.documentType !== "أخرى" ? offlineHeuristicData.documentType : filenameData.documentType,
-          extractedText: extractedTextFallback || `اسم الملف: ${fileName || "مستند"}\n\n[وضع العمل أوفلاين]: تم تحليل الملف واستخلاص بياناته الأساسية تلقائياً بناءً على خصائصه المحلية واسم الملف. يمكنك لصق النص الكامل من الماسح الضوئي (OCR) في الحقل المخصص لتحديث التفاصيل بالكامل أوفلاين.`
+          extractedText: extractedTextFallback || `اسم الملف: ${fileName || "مستند"}\n\n[وضع العمل أوفلاين]: تم تحليل الملف واستخلاص بياناته الأساسية تلقائياً بناءً على خصائصه المحلية واسم الملف. يمكنك لصق النص الكامل من الماسح الضوئي (OCR) في الحقل المخصص لتحديث التفاصيل بالكامل أوفلاين.`,
+          _ollamaFailed: true,
+          _ollamaErrorMsg: ollamaErr?.message || "تعذر الاتصال بـ Ollama"
         };
         
         return res.json(mergedResult);

@@ -2392,7 +2392,9 @@ ${text}`;
                       temperature: 0.0,
                       top_p: 0.1,
                       top_k: 10,
-                      seed: 42
+                      seed: 42,
+                      num_ctx: 8192,
+                      num_predict: 4096
                     }
                   }),
                   signal: controller.signal
@@ -2436,9 +2438,19 @@ ${text}`;
                 data = JSON.parse(cleanText);
                 console.log("Direct client-side Ollama extraction succeeded!", data);
               } catch (parseE) {
-                const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
-                if (jsonMatch) {
-                  data = JSON.parse(jsonMatch[0]);
+                try {
+                  const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+                  if (jsonMatch) {
+                    data = JSON.parse(jsonMatch[0]);
+                  }
+                } catch (fallbackParseE) {
+                  console.error("Failed to parse JSON even with regex fallback", fallbackParseE);
+                  // We still have cleanText from Ollama, maybe we can extract the document content using regex manually so the text is not completely lost.
+                  data = {
+                    documentContent: cleanText,
+                    extractedText: cleanText,
+                    documentSubject: "تعذر استخراج البيانات بدقة (خطأ في تنسيق JSON)"
+                  };
                 }
               }
             } else {
@@ -2479,6 +2491,10 @@ ${text}`;
           }
 
           if (data) {
+            if (data._ollamaFailed) {
+              console.warn("Ollama fallback occurred:", data._ollamaErrorMsg);
+              showToast('error', 'Ollama غير متاح - فشل الاستخراج', `فشل الاتصال بـ Ollama. السبب: ${data._ollamaErrorMsg}. تم استخراج النص بواسطة القارئ الضوئي البديل فقط. الرجاء التحقق من تفعيل OLLAMA_ORIGINS="*" ومن صحة الرابط.`);
+            }
             finalUpdates = {
               documentNumber: data.documentNumber || '',
               documentDate: data.documentDate || '',
@@ -2629,6 +2645,11 @@ ${text}`;
       }
 
       const data = await response.json();
+
+      if (data._ollamaFailed) {
+        console.warn("Ollama fallback occurred on server:", data._ollamaErrorMsg);
+        showToast('error', 'Ollama غير متاح - فشل الاستخراج', `فشل الاتصال بـ Ollama. السبب: ${data._ollamaErrorMsg}. تم استخراج النص بواسطة القارئ الضوئي البديل فقط. الرجاء التحقق من تفعيل OLLAMA_ORIGINS="*" ومن صحة الرابط.`);
+      }
 
       const updates = {
         status: 'success' as const,
@@ -5907,7 +5928,11 @@ ${text}`;
                           <div className="bg-black text-[#85e89d] p-2 rounded font-mono text-left direction-ltr text-[10px] my-1.5 overflow-x-auto select-all">
                             docker exec -it ollama ollama run minicpm-v
                           </div>
-                          <span className="text-[10px] text-amber-500/80 block mt-1">ملاحظة: الموديلات النصية العادية (مثل qwen2.5:7b) لا ترى الصور، وتعتمد على القارئ الضوئي المحلي (Tesseract) الذي غالباً ما يخطئ في اللغة العربية ويولد نصوصاً غير مفهومة.</span>
+                          <div className="text-[11px] bg-red-950/40 text-red-300 border border-red-900/50 p-2 rounded block mt-2">
+                            <strong>⚠️ تنبيه هام للحصول على نص عربي سليم 100% بدون تشوه:</strong><br/>
+                            الموديلات النصية (مثل qwen2.5:7b) <b>لا يمكنها رؤية الصورة</b>، وتعتمد على قارئ ضوئي محلي (Tesseract) يسبب تشوهاً كبيراً وحروفاً متقطعة في اللغة العربية.<br/>
+                            لحل هذه المشكلة <b>جذرياً وبشكل احترافي</b> في وضع (أوفلاين)، يجب عليك استخدام موديل يدعم الرؤية (Vision) مثل <code>minicpm-v</code> أو <code>llama3.2-vision</code> أو <code>llava</code>. هذه الموديلات تقرأ الصورة مباشرة وتسحب النص العربي بدقة مذهلة دون أي تشوه.
+                          </div>
                         </li>
                         <li>
                           إذا لم تقم بتشغيل الحاوية بعد، يمكنك تشغيل Ollama على Docker بأمر واحد يفتح المنفذ الخارجي:
