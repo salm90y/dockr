@@ -26,6 +26,8 @@ services:
     restart: unless-stopped
     ports:
       - "11434:11434"
+    environment:
+      - OLLAMA_ORIGINS=*
     volumes:
       # حفظ النماذج والذكاء الاصطناعي محلياً لمنع إعادة تحميلها عند إعادة تشغيل الكانتينر
       - ollama-models:/root/.ollama
