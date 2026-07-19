@@ -74,8 +74,8 @@ let currentOcrLoggerCallback: ((m: any) => void) | null = null;
 
 async function getSharedTesseractWorker() {
   if (!cachedTesseractWorker) {
-    console.log("Initializing persistent, high-performance Tesseract.js worker with 'ara' language...");
-    cachedTesseractWorker = await Tesseract.createWorker('ara', 1, {
+    console.log("Initializing persistent, high-performance Tesseract.js worker...");
+    cachedTesseractWorker = await Tesseract.createWorker(['ara', 'eng'], undefined, {
       logger: (m) => {
         if (currentOcrLoggerCallback) {
           try {
@@ -457,7 +457,10 @@ export default function App() {
 
 function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { user: User, userProfile: UserProfile | null, isAdminUser: boolean, onLogout: () => void, onOpenAdmin: () => void }) {
   // Offline Mode & Local Heuristics / Ollama AI Configuration States
-  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(true);
+  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(() => {
+    const saved = safeStorage.getItem('archiver_is_offline');
+    return saved !== null ? saved === 'true' : true;
+  });
   const [useOllama, setUseOllama] = useState<boolean>(() => {
     return safeStorage.getItem('archiver_use_ollama') === 'true';
   });
@@ -621,8 +624,8 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
   useEffect(() => {
     if (!isOfflineMode) return;
     
-    // Fetch documents from local API
-    fetch('/api/local/documents')
+    // Fetch documents from local API with cache buster
+    fetch(`/api/local/documents?_t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
         if (data && Array.isArray(data)) {
@@ -632,8 +635,8 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
       })
       .catch(err => console.error("Failed to load documents from local API:", err));
 
-    // Fetch categories from local API
-    fetch('/api/local/categories')
+    // Fetch categories from local API with cache buster
+    fetch(`/api/local/categories?_t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
         if (data && Array.isArray(data)) {
@@ -2277,7 +2280,32 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
         };
 
         const worker = await getSharedTesseractWorker();
-        const ocrResult = await worker.recognize(dataUrl);
+
+        // Wrap the OCR process in a promise that rejects after 20 seconds to prevent any infinite hangs
+        const ocrPromise = worker.recognize(dataUrl, 'ara+eng');
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("OCR_TIMEOUT")), 20000);
+        });
+
+        let ocrResult: any;
+        try {
+          ocrResult = await Promise.race([ocrPromise, timeoutPromise]);
+        } catch (err: any) {
+          console.error("Tesseract OCR execution failed or timed out:", err);
+          
+          // Self-healing: terminate the locked/stuck worker so a fresh one can be created next time
+          if (cachedTesseractWorker) {
+            try {
+              console.log("Terminating stuck Tesseract worker to free memory and prevent future hangs...");
+              await cachedTesseractWorker.terminate();
+            } catch (terminateErr) {
+              console.error("Failed to terminate worker:", terminateErr);
+            }
+            cachedTesseractWorker = null;
+          }
+          
+          throw new Error(err.message === "OCR_TIMEOUT" ? "OCR_TIMEOUT" : "OCR_FAILED");
+        }
 
         const rawText = ocrResult.data.text || "";
         const text = rejoinArabicLetters(rawText);
@@ -2820,28 +2848,26 @@ ${text}`;
       setSelectedDocId(null);
     }
 
-    if (!isOfflineMode) {
-      try {
-        deleteDoc(doc(db, "documents", id)).then(() => {
-          if (docToDelete) {
+    // Always delete from local server API to ensure offline database integrity
+    fetch(`/api/local/documents/${id}`, {
+      method: 'DELETE'
+    }).catch(err => console.error("Failed to delete local document from server:", err));
+
+    if (docToDelete) {
+      if (!isOfflineMode) {
+        try {
+          deleteDoc(doc(db, "documents", id)).then(() => {
              logAction('delete', id, docToDelete.documentNumber, docToDelete.documentSubject, `تم حذف المستند: ${docToDelete.fileName}`);
-          }
-        }).catch(err => {
-          console.error("Failed to delete document from Firestore:", err);
-          handleFirestoreError(err, OperationType.DELETE, `documents/${id}`);
-        });
-      } catch (e) {
-        console.error("Firestore delete error:", e);
-        handleFirestoreError(e, OperationType.DELETE, `documents/${id}`);
-      }
-    } else {
-      if (docToDelete) {
+          }).catch(err => {
+            console.error("Failed to delete document from Firestore:", err);
+            handleFirestoreError(err, OperationType.DELETE, `documents/${id}`);
+          });
+        } catch (e) {
+          console.error("Firestore delete error:", e);
+          handleFirestoreError(e, OperationType.DELETE, `documents/${id}`);
+        }
+      } else {
         logAction('delete', id, docToDelete.documentNumber, docToDelete.documentSubject, `تم حذف المستند محلياً: ${docToDelete.fileName}`);
-        
-        // Delete document from local API when offline
-        fetch(`/api/local/documents/${id}`, {
-          method: 'DELETE'
-        }).catch(err => console.error("Failed to delete local document:", err));
       }
     }
   };
@@ -2852,16 +2878,25 @@ ${text}`;
       setDocuments([]);
       setSelectedDocId(null);
 
-      try {
-        currentDocs.forEach(d => {
-          deleteDoc(doc(db, "documents", d.id)).catch(err => {
-            console.error("Failed to clear document in Firestore:", d.id, err);
-            handleFirestoreError(err, OperationType.DELETE, `documents/${d.id}`);
+      // Always clear local server database as well
+      fetch('/api/local/documents/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([])
+      }).catch(err => console.error("Failed to clear local server documents:", err));
+
+      if (!isOfflineMode) {
+        try {
+          currentDocs.forEach(d => {
+            deleteDoc(doc(db, "documents", d.id)).catch(err => {
+              console.error("Failed to clear document in Firestore:", d.id, err);
+              handleFirestoreError(err, OperationType.DELETE, `documents/${d.id}`);
+            });
           });
-        });
-      } catch (e) {
-        console.error("Firestore clear error:", e);
-        handleFirestoreError(e, OperationType.DELETE, `documents`);
+        } catch (e) {
+          console.error("Firestore clear error:", e);
+          handleFirestoreError(e, OperationType.DELETE, `documents`);
+        }
       }
     }
   };

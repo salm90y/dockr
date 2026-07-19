@@ -1034,6 +1034,15 @@ if (!fs.existsSync(FILES_DIR)) {
 // Serve uploaded files statically
 app.use("/data/files", express.static(FILES_DIR));
 
+// Prevent caching on all local APIs to avoid browser returning stale cached list of documents/categories upon page reload
+app.use("/api/local/*", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("Surrogate-Control", "no-store");
+  next();
+});
+
 // Helper to read JSON database safely
 const readJsonFile = (filePath: string, defaultVal: any) => {
   try {
