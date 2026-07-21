@@ -468,7 +468,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
     return safeStorage.getItem('archiver_ollama_url') || 'http://localhost:11434';
   });
   const [ollamaModel, setOllamaModel] = useState<string>(() => {
-    return safeStorage.getItem('archiver_ollama_model') || 'qwen2.5:7b';
+    return safeStorage.getItem('archiver_ollama_model') || 'minicpm-v';
   });
   const [showOllamaSettingsModal, setShowOllamaSettingsModal] = useState<boolean>(false);
 
@@ -2238,16 +2238,36 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
 
     if (isOfflineMode) {
       try {
-        setDocuments(prev => prev.map(doc => {
-          if (doc.id === id) {
-            return { ...doc, ocrProgress: 'بدء تهيئة محرك القراءة الآلية (OCR)...' };
-          }
-          return doc;
-        }));
+        const isMultimodal = (modelName: string): boolean => {
+          const name = String(modelName || "").toLowerCase();
+          return name.includes("llava") ||
+                  name.includes("vl") ||
+                  name.includes("minicpm") ||
+                  name.includes("moondream") ||
+                  name.includes("vision") ||
+                  name.includes("bakllava");
+        };
 
-        const dataUrl = base64Data.startsWith('data:') ? base64Data : `data:${mimeType};base64,${base64Data}`;
-        
-        console.log("Starting client-side Tesseract.js OCR for offline mode using persistent worker...");
+        const hasVisionModel = useOllama && isMultimodal(ollamaModel);
+        let text = "";
+
+        if (hasVisionModel) {
+          setDocuments(prev => prev.map(doc => {
+            if (doc.id === id) {
+              return { ...doc, ocrProgress: 'يتم الآن إرسال الصورة مباشرة للذكاء الاصطناعي (Vision Model)...' };
+            }
+            return doc;
+          }));
+        } else {
+          setDocuments(prev => prev.map(doc => {
+            if (doc.id === id) {
+              return { ...doc, ocrProgress: 'بدء تهيئة محرك القراءة الآلية (OCR)...' };
+            }
+            return doc;
+          }));
+
+          const dataUrl = base64Data.startsWith('data:') ? base64Data : `data:${mimeType};base64,${base64Data}`;
+          console.log("Starting client-side Tesseract.js OCR for offline mode using persistent worker...");
         
         // Setup the dynamic logger callback for our shared worker
         currentOcrLoggerCallback = (m: any) => {
@@ -2291,7 +2311,6 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
         } catch (err: any) {
           console.error("Tesseract OCR execution failed or timed out:", err);
           
-          // Self-healing: terminate the locked/stuck worker so a fresh one can be created next time
           if (cachedTesseractWorker) {
             try {
               console.log("Terminating stuck Tesseract worker to free memory and prevent future hangs...");
@@ -2306,8 +2325,9 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
         }
 
         const rawText = ocrResult.data.text || "";
-        const text = rejoinArabicLetters(rawText);
+        text = rejoinArabicLetters(rawText);
         console.log("OCR Extracted & Cleaned Arabic Text:", text);
+        }
 
         let finalUpdates: any = {};
 
@@ -2320,42 +2340,28 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
             console.log("Attempting direct browser-to-local-Ollama extraction at:", ollamaUrl);
             const targetUrl = (ollamaUrl || 'http://localhost:11434').replace(/\/$/, "");
             
-            const systemPrompt = `أنت خبير محترف ومسؤول أرشيف عراقي وعربي، مهمتك هي التفريغ النصي الحرفي (Transcription) واستخراج البيانات من الصور أو النصوص بدقة متناهية.
-ممنوع منعاً باتاً تأليف، أو تخمين، أو إضافة أي كلمة غير موجودة في الصورة أو النص الأصلي. يجب استخراج البيانات بصيغة JSON حصراً مطابقة تماماً للمواصفات التالية:
+            const systemPrompt = `أنت خبير أرشيف. استخرج البيانات التالية من الوثيقة المرفقة بصيغة JSON فقط دون أي نصوص إضافية:
 {
-  "documentNumber": "رقم الكتاب الأصلي بالكامل وبدقة فائقة كما هو مكتوب بالوثيقة دون أي اختصار أو حذف لأي جزء أو رمز مائل (مثال: م.أ/123/456)",
-  "documentDate": "تاريخ صدور الكتاب الرئيسي بالضبط كما هو مكتوب بالوثيقة دون أي تغيير",
-  "issuingAuthority": "الجهة التي أصدرت الكتاب الرسمية المذكورة في ترويسة أو متن الكتاب بالضبط",
-  "destinationAuthority": "الجهة الموجه إليها الكتاب (المرسَل إليه) بالضبط كما هو مكتوب",
-  "documentSubject": "موضوع الكتاب بكلمات واضحة ودقيقة جداً مطابقة للموضوع الأصلي",
-  "documentContent": "التفريغ النصي الحرفي الكامل لمحتوى الكتاب كما هو بالتمام والكمال (كلمة بكلمة من البداية للنهاية). يجب أن يكون النص مطابقاً بنسبة 100% للمستند الأصلي دون أي زيادة، أو نقصان، أو تلخيص، أو تحليل، أو صياغة من عندك.",
+  "documentNumber": "رقم الكتاب",
+  "documentDate": "تاريخ الكتاب",
+  "issuingAuthority": "جهة الإصدار",
+  "destinationAuthority": "الجهة الموجه إليها",
+  "documentSubject": "موضوع الكتاب",
+  "documentContent": "النص الكامل الحرفي للكتاب بأكمله من البداية للنهاية دون اختصار",
   "confidenceScore": 95,
-  "documentType": "نوع الوثيقة من: 'تقاعد', 'عقوبة', 'نقل وإلحاق', 'التحاق', 'سحب يد', 'إجازة سنوية', 'وفاة', 'تاريخ انفكاك', 'أخرى'",
-  "references": [
-    {
-      "referenceNumber": "رقم الكتاب/المرجع المذكور في النص بالكامل وبدقة فائقة كما هو مكتوب بالوثيقة بالتمام والكمال",
-      "referenceDate": "تاريخ هذا الكتاب المرجعي بالضبط كما هو مكتوب",
-      "referenceAuthority": "جهة إصدار هذا الكتاب المرجعي بالضبط كما هو مكتوب"
-    }
-  ],
-  "penaltyType": "نوع العقوبة إن وجدت",
-  "legalArticle": "المادة القانونية المستند عليها إن وجدت",
-  "penaltyReason": "سبب العقوبة إن وجد",
-  "penaltyDuration": "مدة العقوبة إن وجدت",
-  "hrLetterNumber": "رقم كتاب الموارد البشرية بالكامل كما هو مكتوب بالوثيقة إن وجد",
-  "hrLetterDate": "تاريخ كتاب الموارد البشرية إن وجد",
-  "securityLetterNumber": "رقم كتاب وكالة الأمن الاتحادي بالكامل كما هو مكتوب بالوثيقة إن وجد",
-  "securityLetterDate": "تاريخ كتاب وكالة الأمن الاتحادي إن وجد",
-  "extractedText": "محتوى إضافي لتأكيد صحة النص إذا لزم الأمر، أو اتركه فارغاً"
+  "documentType": "تقاعد أو عقوبة أو نقل وإلحاق أو التحاق أو سحب يد أو إجازة سنوية أو وفاة أو تاريخ انفكاك أو أخرى",
+  "references": [],
+  "penaltyType": "",
+  "legalArticle": "",
+  "penaltyReason": "",
+  "penaltyDuration": "",
+  "hrLetterNumber": "",
+  "hrLetterDate": "",
+  "securityLetterNumber": "",
+  "securityLetterDate": "",
+  "extractedText": "النص الكامل"
 }
-تعليمات صارمة جداً لمنع التزييف أو تخيل نصوص غير موجودة:
-1. يُمنع منعاً باتاً اختراع، أو تخمين، أو إضافة أي معلومات، أو نصوص، أو أرقام، أو جهات، أو تواريخ غير موجودة بالوثيقة الأصلية المرفقة بالمرة.
-2. لا تقم أبداً بدمج نصوص من وثائق أخرى أو استخدام نصوص وهمية من الذاكرة الخارجية. استخرج فقط النص الحقيقي المكتوب والمطابق للمستند المرفق.
-3. يجب كتابة النص الكامل للكتاب في حقل (documentContent) بشكل حرفي مطابق للوثيقة تماماً، دون تلخيص أو شرح أو إضافة أي كلام من عندك.
-4. الأرقام والتواريخ يجب أن تنقل نسخاً ولصقاً كما هي مكتوبة في المستند دون أي تغيير.
-5. أجب فقط بنص JSON صالح، دون أي كلمات قبل أو بعد القوسين {} ودون استخدام علامات Markdown البرمجية.
-6. إذا كانت الصورة غير واضحة أو لا يمكنك قراءة جزء معين، اتركه فارغاً ولا تخمن أو تؤلف أي كلمة من عندك نهائياً.
-7. يجب الاعتماد بشكل رئيسي وأساسي على الصورة المرفقة للوثيقة. النص المستخلص من القارئ الضوئي هو للاسترشاد فقط، تجاهله تماماً إذا كان يتعارض مع ما تراه في الصورة.`;
+استخرج النص بدقة 100% كما هو مكتوب في الصورة بالضبط، دون أي نقص أو تغيير. أجب بـ JSON فقط.`;
 
             const promptContent = `اسم الملف الأصلي: ${fileName}
 النص المستخلص من القارئ الضوئي (OCR) والذي قد يحتوي على حروف متقطعة أو أخطاء:
@@ -2363,17 +2369,8 @@ ${text}`;
 
             const rawBase64 = base64Data && base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
             
-            const isMultimodalModel = (modelName: string): boolean => {
-              const name = String(modelName || "").toLowerCase();
-              return name.includes("llava") || 
-                     name.includes("vl") || 
-                     name.includes("minicpm") || 
-                     name.includes("moondream") || 
-                     name.includes("vision") || 
-                     name.includes("bakllava");
-            };
 
-            const isMultimodal = isMultimodalModel(ollamaModel);
+            const isMultimodal = hasVisionModel;
 
             const attemptOllamaReq = async (useImage: boolean, timeout: number) => {
               const controller = new AbortController();
@@ -2383,7 +2380,7 @@ ${text}`;
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
-                    model: ollamaModel || "qwen2.5:7b",
+                    model: ollamaModel || "minicpm-v",
                     prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
                     stream: false,
                     format: "json",
@@ -5930,7 +5927,7 @@ ${text}`;
                           </div>
                           <div className="text-[11px] bg-red-950/40 text-red-300 border border-red-900/50 p-2 rounded block mt-2">
                             <strong>⚠️ تنبيه هام للحصول على نص عربي سليم 100% بدون تشوه:</strong><br/>
-                            الموديلات النصية (مثل qwen2.5:7b) <b>لا يمكنها رؤية الصورة</b>، وتعتمد على قارئ ضوئي محلي (Tesseract) يسبب تشوهاً كبيراً وحروفاً متقطعة في اللغة العربية.<br/>
+                            الموديلات النصية (مثل minicpm-v) <b>لا يمكنها رؤية الصورة</b>، وتعتمد على قارئ ضوئي محلي (Tesseract) يسبب تشوهاً كبيراً وحروفاً متقطعة في اللغة العربية.<br/>
                             لحل هذه المشكلة <b>جذرياً وبشكل احترافي</b> في وضع (أوفلاين)، يجب عليك استخدام موديل يدعم الرؤية (Vision) مثل <code>minicpm-v</code> أو <code>llama3.2-vision</code> أو <code>llava</code>. هذه الموديلات تقرأ الصورة مباشرة وتسحب النص العربي بدقة مذهلة دون أي تشوه.
                           </div>
                         </li>
@@ -6566,7 +6563,7 @@ ${text}`;
                                   type="text"
                                   value={ollamaModel}
                                   onChange={(e) => setOllamaModel(e.target.value)}
-                                  placeholder="qwen2.5:7b"
+                                  placeholder="minicpm-v"
                                   className="w-full bg-[#050608] border border-gray-800 text-[9px] text-white rounded px-2 py-1.5 focus:outline-none focus:border-amber-500 font-mono text-left direction-ltr"
                                 />
                               </div>
