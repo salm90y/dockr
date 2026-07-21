@@ -405,7 +405,8 @@ app.post("/api/extract", async (req, res) => {
     
     console.log(`Using Local Offline Ollama AI: ${targetOllamaUrl} with model ${targetOllamaModel}`);
     
-    const systemPrompt = `أنت خبير أرشيف. استخرج البيانات التالية من الوثيقة المرفقة بصيغة JSON فقط دون أي نصوص إضافية:
+    const systemPrompt = `أنت خبير أرشيف باللغة العربية. استخرج البيانات من الوثيقة المرفقة بصيغة JSON فقط.
+تحذير هام: يُمنع منعاً باتاً استخدام اللغة الصينية أو أي لغة أخرى غير العربية. استخرج النص كما هو مكتوب في الوثيقة دون أي هلوسة أو تأليف.
 {
   "documentNumber": "رقم الكتاب",
   "documentDate": "تاريخ الكتاب",
@@ -428,8 +429,7 @@ app.post("/api/extract", async (req, res) => {
 }
 استخرج النص بدقة 100% كما هو مكتوب في الصورة بالضبط، دون أي نقص أو تغيير. أجب بـ JSON فقط.`;
 
-    const promptContent = `اسم الملف: ${fileName || "مستند"}
-النص المستخلص من الوثيقة: ${extractedTextFallback || "لا يوجد نص متوفر"}`;
+    const promptContent = `اسم الملف: ${fileName || "مستند"}` + (extractedTextFallback ? `\nالنص المستخلص من الوثيقة: \n${extractedTextFallback}` : "");
 
     let ollamaRes: Response | null = null;
     let lastOllamaError: any = null;
@@ -467,14 +467,13 @@ app.post("/api/extract", async (req, res) => {
           model: targetOllamaModel,
           prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
           stream: false,
-          format: "json",
           options: {
             temperature: 0.0,
             top_p: 0.1,
             top_k: 10,
             seed: 42,
             num_ctx: 8192,
-            num_predict: 4096
+            num_predict: 2048
           }
         };
         
@@ -525,14 +524,13 @@ app.post("/api/extract", async (req, res) => {
                 model: targetOllamaModel,
                 prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
                 stream: false,
-                format: "json",
                 options: {
                   temperature: 0.0,
                   top_p: 0.1,
                   top_k: 10,
                   seed: 42,
                   num_ctx: 8192,
-                  num_predict: 4096
+                  num_predict: 2048
                 }
               }),
               signal: AbortSignal.timeout(180000)

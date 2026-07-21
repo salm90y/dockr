@@ -2340,7 +2340,8 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
             console.log("Attempting direct browser-to-local-Ollama extraction at:", ollamaUrl);
             const targetUrl = (ollamaUrl || 'http://localhost:11434').replace(/\/$/, "");
             
-            const systemPrompt = `أنت خبير أرشيف. استخرج البيانات التالية من الوثيقة المرفقة بصيغة JSON فقط دون أي نصوص إضافية:
+            const systemPrompt = `أنت خبير أرشيف باللغة العربية. استخرج البيانات من الوثيقة المرفقة بصيغة JSON فقط.
+تحذير هام: يُمنع منعاً باتاً استخدام اللغة الصينية أو أي لغة أخرى غير العربية. استخرج النص كما هو مكتوب في الوثيقة دون أي هلوسة أو تأليف.
 {
   "documentNumber": "رقم الكتاب",
   "documentDate": "تاريخ الكتاب",
@@ -2363,9 +2364,7 @@ function MainApp({ user, userProfile, isAdminUser, onLogout, onOpenAdmin }: { us
 }
 استخرج النص بدقة 100% كما هو مكتوب في الصورة بالضبط، دون أي نقص أو تغيير. أجب بـ JSON فقط.`;
 
-            const promptContent = `اسم الملف الأصلي: ${fileName}
-النص المستخلص من القارئ الضوئي (OCR) والذي قد يحتوي على حروف متقطعة أو أخطاء:
-${text}`;
+            const promptContent = `اسم الملف الأصلي: ${fileName}` + (text ? `\nالنص المستخلص من القارئ الضوئي (للاسترشاد): \n${text}` : "");
 
             const rawBase64 = base64Data && base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
             
@@ -2383,7 +2382,6 @@ ${text}`;
                     model: ollamaModel || "minicpm-v",
                     prompt: `${systemPrompt}\n\nالبيانات المطلوب تحليلها:\n${promptContent}`,
                     stream: false,
-                    format: "json",
                     images: useImage && rawBase64 ? [rawBase64] : [],
                     options: {
                       temperature: 0.0,
@@ -2391,7 +2389,7 @@ ${text}`;
                       top_k: 10,
                       seed: 42,
                       num_ctx: 8192,
-                      num_predict: 4096
+                      num_predict: 2048
                     }
                   }),
                   signal: controller.signal
